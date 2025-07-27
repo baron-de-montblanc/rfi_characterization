@@ -29,7 +29,7 @@ parameters {
 
 
 model {
-  vector[T] yd = y - mu_clean;  // detrended curve (remove smooth clean background)
+  vector[T] yd = y - mu_clean;  // TODO: detrend curve (remove smooth clean background)
 
   array[2] real accu_clean;     // used for clean state
   array[2] real accu_rfi;       // used for rfi state
@@ -38,6 +38,7 @@ model {
   // priors
   mu_clean ~ normal(mu0_clean, sigma0_clean);
   mu_rfi ~ normal(mu0_rfi, sigma0_rfi);
+  sigma_clean ~ normal(0, 5);
 
   // Initial state likelihoods (t = 1)
   gamma[1,1] = normal_lpdf(yd[1] | 0, sigma_clean);       // clean

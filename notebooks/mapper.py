@@ -245,12 +245,14 @@ N_terms=20
 #Initializes minimum objective function for our probing and corresponding fit
 min_prob = 1e9
 min_fit = 0
-emit_test_range = 1
+
+#Change this to modify how many events you want to test for
+emit_test_range = 3
 
 
 ##To prevent us from falling into local minima, grid seeding allows us to identify the location of the global minimum first.
 #Constructing the emissions looper
-for num_emissions in range(1, emit_test_range+1):
+for num_emissions in range(0, emit_test_range+1):
 
     print(f"Testing {num_emissions} emissions.")
 
@@ -259,7 +261,7 @@ for num_emissions in range(1, emit_test_range+1):
     time_fits = np.empty((0, N_terms + 3*num_emissions))
 
     #Constructing the divisions/seeds in the time grid
-    divs = 10
+    divs = 10   #Increase this to increase the number of starting seeds
     seeds = np.linspace(smooth_time.min(), smooth_time.max(), divs)
 
     #Constructing the combinations of seeds we can construct using num_emissions

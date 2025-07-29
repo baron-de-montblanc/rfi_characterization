@@ -16,7 +16,7 @@ from custom_funcs import chan_avg, chan_select
 ##Importing and pre-processing data file from Data folder
 
 #Defining the data directory and night in file name
-data_dir = "Data"
+data_dir = "/Data"
 night = "109112_p1"
 
 #Constructing datapath and constructing ins object using SSINS

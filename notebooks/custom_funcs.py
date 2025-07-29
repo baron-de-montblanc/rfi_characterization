@@ -49,7 +49,7 @@ def chan_select(ins, chan_name, shape_dict):
     masked_ins.metric_array = masked_data
     
     #Getting rid of the pesky subband lines
-    line_mask = np.load('Data/linemask.npy')[subband_chans]
+    line_mask = np.load('notebooks/Data/linemask.npy')[subband_chans]
     ins_subband.metric_array = ins_subband.metric_array[:, ~line_mask, :]
     ins_subband.freq_array = ins_subband.freq_array[~line_mask]
     masked_ins.metric_array = masked_ins.metric_array[:, ~line_mask, :]

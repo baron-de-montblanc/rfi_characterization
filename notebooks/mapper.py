@@ -393,5 +393,3 @@ def rcos_model(time, *params, show='all'):
         return emission
     elif show == 'background':
         return background
-    
-

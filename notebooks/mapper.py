@@ -396,3 +396,4 @@ def rcos_model(time, *params, show='all'):
     
 ##Returning the background-subtracted time series
 clean_amps = padded_amp - rcos_model(smooth_time, *rcos_fit, show='background')
+print(clean_amps)

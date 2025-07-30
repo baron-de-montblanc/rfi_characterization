@@ -12,40 +12,19 @@ from itertools import combinations
 from custom_funcs import chan_avg, chan_select
 
 
-#####################################################
-##Importing and pre-processing data file from Data folder
+# ================================== Global parameters ====================================
 
-#Defining the data directory and night in file name
-data_dir = "Data"
-night = "109112_p1"
-
-#Constructing datapath and constructing ins object using SSINS
-datapath = os.path.join(data_dir, night + "_SSINS_data.h5")
-maskpath = os.path.join(data_dir, night + "_SSINS_mask.h5")
-ins = INS(datapath, telescope_name='MWA', mask_file=maskpath)
-
-#Defining shape dictionary
-TV_dict = {
+# Defining shape dictionary
+TV_DICT = {
     'TV6': [1.74e8, 1.81e8],
     'TV7': [1.81e8, 1.88e8],
     'TV8': [1.88e8, 1.95e8],
     'TV9': [1.95e8, 2.02e8]
     }
 
-#Selecting one DTV subband
-chan_name = 'TV7'
-
-#Extracting and averaging over the selected subband
-ins_subband, masked_ins, N_bl, N_freq = chan_select(ins, chan_name, TV_dict)
-time, amp = chan_avg(ins_subband)
-masked_time, masked_amp = chan_avg(masked_ins)
-
-
-#####################################################
-##Previous data for constructing prior on RFI emission parameters
-
+## Previous data for constructing prior on RFI emission parameters
 #Peaks, SSINS amplitudes (arb units)
-peaks=np.array([53.35432366, 8.97030183, 39.32910956, 28.3103236, 30.93772398, 36.2624972, 15.55913153, 44.21889192,
+PEAKS = np.array([53.35432366, 8.97030183, 39.32910956, 28.3103236, 30.93772398, 36.2624972, 15.55913153, 44.21889192,
        44.9823896, 36.18116225, 25.08418434, 33.37233714, 51.98871383, 71.11015838, 25.76393398, 17.09304232, 
        6.0885566, 11.14962293, 52.29949963, 44.91604231, 23.85311619, 57.59864797, 1.21500878e+01, 4.57578285e+01,
        43.16161392, 51.0379999, 16.44774823, 53.31619823, 85.09920858, 10.72147938, 18.26272233, 37.61133042,
@@ -55,7 +34,7 @@ peaks=np.array([53.35432366, 8.97030183, 39.32910956, 28.3103236, 30.93772398, 3
 
 
 #Time into pointing/length of pointing -- want flat
-loc=np.array([0.39361857, 0.94595976, 0.52309947, 0.1174075, 0.42087645, 0.55030397, 0.96448721, 0.95354939,
+LOC = np.array([0.39361857, 0.94595976, 0.52309947, 0.1174075, 0.42087645, 0.55030397, 0.96448721, 0.95354939,
      0.5667833, 0.9647058, 0.13256501, 0.52036559, 0.18725956, 0.53959978, 0.81926798, 0.85710116, 
      0.19789189, 0.56327705, 0.62144842, 0.11526984, 0.44578389, 0.15972674, 1.84629939e-01, 8.81903585e-01,
      2.53746154e-01, 3.52378053e-01, 6.56658287e-01, 0.20640947, 0.9842502, 0.82448753, 0.79864468, 0.82609582,
@@ -64,7 +43,7 @@ loc=np.array([0.39361857, 0.94595976, 0.52309947, 0.1174075, 0.42087645, 0.55030
      0.45948544, 0.53000544, 0.94603795, 0.41958575, 0.94060631, 0.4551634, 0.96417559, 0.68670813])
 
 #Durations (s)
-widths=np.array([46.35740966, 47.78082138, 52.01985143, 51.1243677, 48.66579981, 62.63576724, 51.55184647, 64.54810228,
+WIDTHS = np.array([46.35740966, 47.78082138, 52.01985143, 51.1243677, 48.66579981, 62.63576724, 51.55184647, 64.54810228,
         68.97618067, 63.08569669, 56.8891352, 64.68566024, 54.74073774, 57.955234, 35.92143505, 32.08070818,
         74.16922759, 57.12015228, 69.59804093, 65.70437593, 47.97567077, 82.01174163, 6.44723034e+01, 6.44048269e+01,
         6.87384350e+01, 6.99024843e+01, 5.66360677e+01, 73.41190595, 97.88771772, 38.34149624, 40.48260042, 62.84866352,
@@ -73,40 +52,24 @@ widths=np.array([46.35740966, 47.78082138, 52.01985143, 51.1243677, 48.66579981,
         57.35702717, 62.72083288, 57.83072425, 72.39670654, 7.68408292e+01, 56.47607773, 58.60065642, 58.92762818])
 
 
-widths = np.sort(widths)/60/60/24   #Rescaling to Julian time units
-loc = np.sort(loc)
-peaks = np.sort(peaks)
+WIDTHS = np.sort(WIDTHS)/60/60/24   #Rescaling to Julian time units
+LOC = np.sort(LOC)
+PEAKS = np.sort(PEAKS)
 
-#Constructing our prior sample matrix
-theta_0 = np.vstack((peaks, loc*(np.max(time) - np.min(time)), widths))
-
-
-#####################################################
 ##Constructing our DPSS fit coefficient prior
-
-c0 = np.load('Data/p0_coefficients.npy')
-c1 = np.load('Data/p1_coefficients.npy')
-c2 = np.load('Data/p2_coefficients.npy')
-c3 = np.load('Data/p3_coefficients.npy')
+C0 = np.load('Data/p0_coefficients.npy')
+C1 = np.load('Data/p1_coefficients.npy')
+C2 = np.load('Data/p2_coefficients.npy')
+C3 = np.load('Data/p3_coefficients.npy')
 c4 = np.load('Data/p4_coefficients.npy')
 
-samples = np.concatenate((c0, c1, c2, c3))
+SAMPLES = np.concatenate((C0, C1, C2, C3))
 
 
-#####################################################
-##Defining the objective posterior
+# ================================== Helper Functions ====================================
 
-#Constructing a uniform time axis
-dt = st.mode(np.diff(time)).mode
-smooth_time = np.arange(time.min(), time.max() + dt, dt)
 
-#Constructing a padded uniform amplitude grid
-padded_amp = np.full_like(smooth_time, np.nan, dtype=float)
-indices = np.searchsorted(smooth_time, time)
-padded_amp[indices] = amp
-
-#The definition of the objective function
-def rcos_diff(params, time, vis_amp, show_converg=False, penalty=5000):
+def rcos_diff(params, time, vis_amp, N_bl, N_freq, theta_0, show_converg=False, penalty=5000):
 
     """ 
     The objective log-posterior function for MAP fitting of the SSINS time series
@@ -126,6 +89,12 @@ def rcos_diff(params, time, vis_amp, show_converg=False, penalty=5000):
     
     show_converg:
         Boolean. If True, the objective posterior will print the posterior throughout minimization.
+
+    N_bl:
+        Int. Number of baselines
+
+    N_freq:
+        Int. Number of frequency channels
     
     penalty:
         Penalty factor that penalizes high emission numbers. 
@@ -187,8 +156,8 @@ def rcos_diff(params, time, vis_amp, show_converg=False, penalty=5000):
 
 
     #Determining prior mean and covariance for DPSS coefficients
-    prior_mean = np.mean(samples, axis=0)
-    prior_cov = np.cov(samples.T)
+    prior_mean = np.mean(SAMPLES, axis=0)
+    prior_cov = np.cov(SAMPLES.T)
     
     prior_residual = coeff[:13] - prior_mean
     
@@ -233,121 +202,8 @@ def rcos_diff(params, time, vis_amp, show_converg=False, penalty=5000):
     return minus_posterior
 
 
-#####################################################
-##The core of the MAP fitter. Iterates across a preset range of emission numbers, probing to find the best fit.
-
-#Translating time axis to start at 0 to make convergence easier
-smooth_time = smooth_time - np.min(smooth_time[np.isfinite(smooth_time)])
-
-#Setting the number of DPSS terms
-N_terms=20
-
-#Initializes minimum objective function for our probing and corresponding fit
-min_prob = 1e9
-min_fit = 0
-
-#Change this to modify how many events you want to test for
-emit_test_range = 3
-
-
-##To prevent us from falling into local minima, grid seeding allows us to identify the location of the global minimum first.
-#Constructing the emissions looper
-for num_emissions in range(0, emit_test_range+1):
-
-    print(f"Testing {num_emissions} emissions.")
-
-    #initializing log probability and fits
-    log_prob = np.array([])
-    time_fits = np.empty((0, N_terms + 3*num_emissions))
-
-    #Constructing the divisions/seeds in the time grid
-    divs = 10   #Increase this to increase the number of starting seeds
-    seeds = np.linspace(smooth_time.min(), smooth_time.max(), divs)
-
-    #Constructing the combinations of seeds we can construct using num_emissions
-    combos = np.array(list(combinations(seeds, num_emissions)))
-    print("Number of seeds:", len(combos))
-
-    #Constructing the grid seed for loop
-    for x in range(len(combos)):
-
-        #Running through the combinations
-        print(f"Running cycle #{x+1}...")
-
-        #Constructing our initial guess of emission parameters based on our seeds
-        emit_array = []
-        for j in np.arange(0, num_emissions):
-            emit_array = np.concatenate((emit_array, [np.mean(theta_0[0]), combos[x, j], np.mean(theta_0[2])]))
-        
-        #Initial guess (DPSS coeffs + emit params)
-        p0 = np.concatenate((np.mean(samples, axis=0), np.zeros(shape=(N_terms-13, )), emit_array))
-
-        #Bounds -- in the case of the time loc for emissions, this also implements a flat prior
-        bounds = (
-            [(-1e5, 1e5)] * N_terms +
-            ([(theta_0[0].min(), theta_0[0].max()), (0, smooth_time.max()), (theta_0[2].min(), smooth_time.max())] * num_emissions)
-        )
-
-        #Minimizing and probing using Nelder-Mead optimization
-        rcos_fit = minimize(
-            lambda p: rcos_diff(p, smooth_time, padded_amp),
-            x0=p0,
-            bounds=bounds,
-            method='Nelder-Mead',
-            options={
-                'maxfev': 500,
-                'adaptive': True,  
-                'xatol': 1e-6,     
-                'fatol': 1e-5
-            }
-        ).x
-
-        #Constructing objective function values
-        log_prob_min = rcos_diff(rcos_fit, smooth_time, padded_amp)
-        log_prob = np.append(log_prob, log_prob_min)
-        time_fits = np.vstack([time_fits, rcos_fit])
-
-    #Estimating location of global minimum
-    rcos_fit = time_fits[log_prob == np.min(log_prob)][0]
-    print(f"Minimum log posterior found for {num_emissions} emissions is {log_prob.min()}.")
-
-    #Finding the best fit depending on the number of coefficients
-    if log_prob.min() < min_prob:
-        min_prob = log_prob.min()
-        min_fit = rcos_fit
-
-##Constructing our best guess after cycling through all seed combos and emission numbers
-p0 = min_fit
-num_emissions = int((len(p0) - N_terms)/3)
-bounds = (
-            [(-1e5, 1e5)] * N_terms +
-            ([(0, None), (0, smooth_time.max()), (0, smooth_time.max())] * num_emissions)
-        )
-
-##Doing a proper long minimization
-rcos_fit = minimize(
-        lambda p: rcos_diff(p, smooth_time, padded_amp, show_converg=True),
-        x0=p0,
-        bounds=bounds,
-        method='Nelder-Mead',
-        options={
-            'maxfev': 5000,
-            'adaptive': True,  
-            'xatol': 1e-5,     
-            'fatol': 1e-4
-        }
-    ).x
-
-##Finding our final answer
-print(rcos_diff(rcos_fit, smooth_time, padded_amp))
-print(rcos_fit)
-
-
-#####################################################
-
 ##Defining the joint model
 #Set show='background' to get the smooth DPSS background and subtract it from the time series
-
 def rcos_model(time, *params, show='all'):
 
     """ 
@@ -395,7 +251,167 @@ def rcos_model(time, *params, show='all'):
         return emission
     elif show == 'background':
         return background
-    
-##Returning the background-subtracted time series
-clean_amps = padded_amp - rcos_model(smooth_time, *rcos_fit, show='background')
-print(clean_amps)
+
+# ================================== Main Procedure ====================================
+
+
+def bg_subtract(data_dir        = "Data", 
+                night           = "109112_p1",
+                obsids          = None,
+                chan_name       = "TV7",
+                N_terms         = 20,
+                min_prob        = 1e9,
+                min_fit         = 0,
+                emit_test_range = 3,
+                show            = 'background',
+                ):
+    """
+    Perform background subtraction on a selected frequency band
+
+    Parameters:
+        data_dir (str): Directory containing SSINS data and mask files
+        night (str): Identifier for the specific observation night and pointing
+        obsids (list): Alternatively, give the list of desired OBSIDs (for individually stored elements)
+        chan_name (str): Name of the frequency band to process
+        N_terms (int): Number of DPSS terms to use
+        min_prob (float): Initial value for minimum log-probability (used for tracking best fit)
+        min_fit (int): Initial best-fit index (corresponding to emission count)
+        emit_test_range (int): Maximum number of emission components to test for during MAP fitting
+
+    Returns:
+
+    """
+    if not obsids:
+        #Constructing datapath and constructing ins object using SSINS
+        datapath = os.path.join(data_dir, night + "_SSINS_data.h5")
+        maskpath = os.path.join(data_dir, night + "_SSINS_mask.h5")
+        ins = INS(datapath, telescope_name='MWA', mask_file=maskpath)
+    else:
+        for obs_idx, obs in enumerate(obsids):
+            obs_path = os.path.join(data_dir, obs + "_SSINS_data.h5")
+            # obs_maskpath = os.path.join(data_dir, obs + "_SSINS_mask.h5")
+            if obs_idx == 0:
+                ins = INS(obs_path, telescope_name='MWA', 
+                # mask_file=obs_maskpath,
+                )
+            else:
+                ins += INS(obs_path, telescope_name='MWA', 
+                # mask_file=obs_maskpath,
+                )
+
+    #Extracting and averaging over the selected subband
+    ins_subband, masked_ins, N_bl, N_freq = chan_select(ins, chan_name, TV_DICT)
+    time, amp = chan_avg(ins_subband)
+    masked_time, masked_amp = chan_avg(masked_ins)
+
+    #Constructing our prior sample matrix
+    theta_0 = np.vstack((PEAKS, LOC*(np.max(time) - np.min(time)), WIDTHS))
+
+    ##Defining the objective posterior
+    #Constructing a uniform time axis
+    dt = st.mode(np.diff(time)).mode
+    smooth_time = np.arange(time.min(), time.max() + dt, dt)
+
+    #Constructing a padded uniform amplitude grid
+    padded_amp = np.full_like(smooth_time, np.nan, dtype=float)
+    indices = np.searchsorted(smooth_time, time)
+    padded_amp[indices] = amp
+
+    ##The core of the MAP fitter. Iterates across a preset range of emission numbers, probing to find the best fit.
+
+    #Translating time axis to start at 0 to make convergence easier
+    smooth_time = smooth_time - np.min(smooth_time[np.isfinite(smooth_time)])
+
+
+    ##To prevent us from falling into local minima, grid seeding allows us to identify the location of the global minimum first.
+    #Constructing the emissions looper
+    for num_emissions in range(0, emit_test_range+1):
+
+        print(f"Testing {num_emissions} emissions.")
+
+        #initializing log probability and fits
+        log_prob = np.array([])
+        time_fits = np.empty((0, N_terms + 3*num_emissions))
+
+        #Constructing the divisions/seeds in the time grid
+        divs = 10   #Increase this to increase the number of starting seeds
+        seeds = np.linspace(smooth_time.min(), smooth_time.max(), divs)
+
+        #Constructing the combinations of seeds we can construct using num_emissions
+        combos = np.array(list(combinations(seeds, num_emissions)))
+        print("Number of seeds:", len(combos))
+
+        #Constructing the grid seed for loop
+        for x in range(len(combos)):
+
+            #Running through the combinations
+            print(f"Running cycle #{x+1}...")
+
+            #Constructing our initial guess of emission parameters based on our seeds
+            emit_array = []
+            for j in np.arange(0, num_emissions):
+                emit_array = np.concatenate((emit_array, [np.mean(theta_0[0]), combos[x, j], np.mean(theta_0[2])]))
+            
+            #Initial guess (DPSS coeffs + emit params)
+            p0 = np.concatenate((np.mean(SAMPLES, axis=0), np.zeros(shape=(N_terms-13, )), emit_array))
+
+            #Bounds -- in the case of the time loc for emissions, this also implements a flat prior
+            bounds = (
+                [(-1e5, 1e5)] * N_terms +
+                ([(theta_0[0].min(), theta_0[0].max()), (0, smooth_time.max()), (theta_0[2].min(), smooth_time.max())] * num_emissions)
+            )
+
+            #Minimizing and probing using Nelder-Mead optimization
+            rcos_fit = minimize(
+                lambda p: rcos_diff(p, smooth_time, padded_amp, N_bl, N_freq, theta_0),
+                x0=p0,
+                bounds=bounds,
+                method='Nelder-Mead',
+                options={
+                    'maxfev': 500,
+                    'adaptive': True,  
+                    'xatol': 1e-6,     
+                    'fatol': 1e-5
+                }
+            ).x
+
+            #Constructing objective function values
+            log_prob_min = rcos_diff(rcos_fit, smooth_time, padded_amp, N_bl, N_freq, theta_0)
+            log_prob = np.append(log_prob, log_prob_min)
+            time_fits = np.vstack([time_fits, rcos_fit])
+
+        #Estimating location of global minimum
+        rcos_fit = time_fits[log_prob == np.min(log_prob)][0]
+        print(f"Minimum log posterior found for {num_emissions} emissions is {log_prob.min()}.")
+
+        #Finding the best fit depending on the number of coefficients
+        if log_prob.min() < min_prob:
+            min_prob = log_prob.min()
+            min_fit = rcos_fit
+
+    ##Constructing our best guess after cycling through all seed combos and emission numbers
+    p0 = min_fit
+    num_emissions = int((len(p0) - N_terms)/3)
+    bounds = (
+                [(-1e5, 1e5)] * N_terms +
+                ([(0, None), (0, smooth_time.max()), (0, smooth_time.max())] * num_emissions)
+            )
+
+    ##Doing a proper long minimization
+    rcos_fit = minimize(
+            lambda p: rcos_diff(p, smooth_time, padded_amp, N_bl, N_freq, theta_0, show_converg=True),
+            x0=p0,
+            bounds=bounds,
+            method='Nelder-Mead',
+            options={
+                'maxfev': 5000,
+                'adaptive': True,  
+                'xatol': 1e-5,     
+                'fatol': 1e-4
+            }
+        ).x
+
+    ##Returning the background-subtracted time series
+    clean_amps = padded_amp - rcos_model(smooth_time, *rcos_fit, show=show)
+
+    return clean_amps

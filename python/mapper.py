@@ -416,13 +416,19 @@ def bg_subtract(data_dir        = "Data",
 
     ##Returning the background-subtracted time series
 <<<<<<< HEAD
+<<<<<<< HEAD
     clean_amps = padded_amp - rcos_model(smooth_time, *rcos_fit, show=show)
     noise_err = (np.sqrt((4/np.pi-1)/N_bl/N_freq)*rcos_model(smooth_time, *rcos_fit, show='background'))
 =======
+=======
+>>>>>>> 3e620e5 (added scripts to run the background subtraction in parallel via slurm array jobs)
 <<<<<<< HEAD
     clean_amps = padded_amp - rcos_model(smooth_time, N_terms, *rcos_fit, show=show)
 =======
     clean_amps = padded_amp - rcos_model(smooth_time, *rcos_fit, show=show)
+=======
+    clean_amps = padded_amp - rcos_model(smooth_time, N_terms, *rcos_fit, show=show)
+>>>>>>> 6596419 (added scripts to run the background subtraction in parallel via slurm array jobs)
     noise_err = (np.sqrt((4/np.pi-1)/N_bl/N_freq)*rcos_model(smooth_time, *rcos_fit, show='background'))
 >>>>>>> aa25672 (Added noise return to bg_subtract)
 >>>>>>> 4fc9d3f (Added noise return to bg_subtract)

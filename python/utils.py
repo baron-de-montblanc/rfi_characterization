@@ -30,4 +30,4 @@ def get_night(data, target_obsid):
         result.append(sorted_obsids[i])
         i += 1
 
-    return result
+    return target_value, result  # return the pointing and all associated obsids for that night

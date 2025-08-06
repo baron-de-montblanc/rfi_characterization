@@ -57,11 +57,11 @@ LOC = np.sort(LOC)
 PEAKS = np.sort(PEAKS)
 
 ##Constructing our DPSS fit coefficient prior
-C0 = np.load('Data/p0_coefficients.npy')
-C1 = np.load('Data/p1_coefficients.npy')
-C2 = np.load('Data/p2_coefficients.npy')
-C3 = np.load('Data/p3_coefficients.npy')
-c4 = np.load('Data/p4_coefficients.npy')
+C0 = np.load('../data/p0_coefficients.npy')
+C1 = np.load('../data/p1_coefficients.npy')
+C2 = np.load('../data/p2_coefficients.npy')
+C3 = np.load('../data/p3_coefficients.npy')
+c4 = np.load('../data/p4_coefficients.npy')
 
 SAMPLES = np.concatenate((C0, C1, C2, C3))
 
@@ -69,7 +69,7 @@ SAMPLES = np.concatenate((C0, C1, C2, C3))
 # ================================== Helper Functions ====================================
 
 
-def rcos_diff(params, time, vis_amp, N_bl, N_freq, theta_0, show_converg=False, penalty=5000):
+def rcos_diff(params, time, vis_amp, N_terms, N_bl, N_freq, theta_0, show_converg=False, penalty=5000):
 
     """ 
     The objective log-posterior function for MAP fitting of the SSINS time series
@@ -100,7 +100,6 @@ def rcos_diff(params, time, vis_amp, N_bl, N_freq, theta_0, show_converg=False, 
         Penalty factor that penalizes high emission numbers. 
         Future step: properly define this to give the Poisson distribution for airplane emissions.
 
-    
     Returns
     -------
 
@@ -108,9 +107,6 @@ def rcos_diff(params, time, vis_amp, N_bl, N_freq, theta_0, show_converg=False, 
         Minus the log posterior, the value which we want to minimize.
 
       """
-
-    #Defining the number of DPSS terms
-    N_terms=20
 
     #Making our DPSS fit coefficients and emission parameters
     coeff = params[:N_terms]
@@ -264,6 +260,7 @@ def bg_subtract(data_dir        = "Data",
                 min_fit         = 0,
                 emit_test_range = 3,
                 show            = 'background',
+                verbose         = False,
                 ):
     """
     Perform background subtraction on a selected frequency band
@@ -277,6 +274,7 @@ def bg_subtract(data_dir        = "Data",
         min_prob (float): Initial value for minimum log-probability (used for tracking best fit)
         min_fit (int): Initial best-fit index (corresponding to emission count)
         emit_test_range (int): Maximum number of emission components to test for during MAP fitting
+        verbose (bool): print extra information to stdout?
 
     Returns:
 
@@ -289,14 +287,14 @@ def bg_subtract(data_dir        = "Data",
     else:
         for obs_idx, obs in enumerate(obsids):
             obs_path = os.path.join(data_dir, obs + "_SSINS_data.h5")
-            # obs_maskpath = os.path.join(data_dir, obs + "_SSINS_mask.h5")
+            obs_maskpath = os.path.join(data_dir, obs + "_SSINS_mask.h5")
             if obs_idx == 0:
                 ins = INS(obs_path, telescope_name='MWA', 
-                # mask_file=obs_maskpath,
+                mask_file=obs_maskpath,
                 )
             else:
                 ins += INS(obs_path, telescope_name='MWA', 
-                # mask_file=obs_maskpath,
+                mask_file=obs_maskpath,
                 )
 
     #Extracting and averaging over the selected subband
@@ -327,7 +325,8 @@ def bg_subtract(data_dir        = "Data",
     #Constructing the emissions looper
     for num_emissions in range(0, emit_test_range+1):
 
-        print(f"Testing {num_emissions} emissions.")
+        if verbose:
+            print(f"Testing {num_emissions} emissions.")
 
         #initializing log probability and fits
         log_prob = np.array([])
@@ -339,13 +338,15 @@ def bg_subtract(data_dir        = "Data",
 
         #Constructing the combinations of seeds we can construct using num_emissions
         combos = np.array(list(combinations(seeds, num_emissions)))
-        print("Number of seeds:", len(combos))
+        if verbose:
+            print("Number of seeds:", len(combos))
 
         #Constructing the grid seed for loop
         for x in range(len(combos)):
 
             #Running through the combinations
-            print(f"Running cycle #{x+1}...")
+            if verbose:
+                print(f"Running cycle #{x+1}...")
 
             #Constructing our initial guess of emission parameters based on our seeds
             emit_array = []
@@ -363,7 +364,7 @@ def bg_subtract(data_dir        = "Data",
 
             #Minimizing and probing using Nelder-Mead optimization
             rcos_fit = minimize(
-                lambda p: rcos_diff(p, smooth_time, padded_amp, N_bl, N_freq, theta_0),
+                lambda p: rcos_diff(p, smooth_time, padded_amp, N_terms, N_bl, N_freq, theta_0),
                 x0=p0,
                 bounds=bounds,
                 method='Nelder-Mead',
@@ -376,13 +377,14 @@ def bg_subtract(data_dir        = "Data",
             ).x
 
             #Constructing objective function values
-            log_prob_min = rcos_diff(rcos_fit, smooth_time, padded_amp, N_bl, N_freq, theta_0)
+            log_prob_min = rcos_diff(rcos_fit, smooth_time, padded_amp, N_terms, N_bl, N_freq, theta_0)
             log_prob = np.append(log_prob, log_prob_min)
             time_fits = np.vstack([time_fits, rcos_fit])
 
         #Estimating location of global minimum
         rcos_fit = time_fits[log_prob == np.min(log_prob)][0]
-        print(f"Minimum log posterior found for {num_emissions} emissions is {log_prob.min()}.")
+        if verbose:
+            print(f"Minimum log posterior found for {num_emissions} emissions is {log_prob.min()}.")
 
         #Finding the best fit depending on the number of coefficients
         if log_prob.min() < min_prob:
@@ -399,7 +401,7 @@ def bg_subtract(data_dir        = "Data",
 
     ##Doing a proper long minimization
     rcos_fit = minimize(
-            lambda p: rcos_diff(p, smooth_time, padded_amp, N_bl, N_freq, theta_0, show_converg=True),
+            lambda p: rcos_diff(p, smooth_time, padded_amp, N_terms, N_bl, N_freq, theta_0),
             x0=p0,
             bounds=bounds,
             method='Nelder-Mead',

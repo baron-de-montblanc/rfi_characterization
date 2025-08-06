@@ -31,3 +31,43 @@ def get_night(data, target_obsid):
         i += 1
 
     return target_value, result  # return the pointing and all associated obsids for that night
+
+
+def get_pointing(data, pointing):
+    """
+    Given a dictionary mapping obsids to pointings, and the desired pointing,
+    return *all* obsids for that pointing.
+
+    Parameters:
+        data (dict): Dictionary of obsid strings mapped to integer values.
+        pointing (int): The desired pointing
+
+    Returns:
+        list: Complete list of obsids from that poiting
+    """
+    result = []
+    for i in data:
+        if data[i] == pointing:
+            result.append(i)
+
+    return result  # return all associated obsids for that pointing
+
+
+def get_ref_obsids(data):
+    """
+    Given a data dictionary that maps OBSIDs to pointings,
+    get the list of all 'reference' OBSIDs; i.e. the first
+    OBSID per pointing.
+    """
+    # Sort the OBSIDs numerically (they should already be sorted, but just in case)
+    sorted_items = sorted(data.items(), key=lambda x: int(x[0]))
+
+    ref_obsids = []
+    prev_pointing = None
+
+    for obsid, pointing in sorted_items:
+        if pointing != prev_pointing:
+            ref_obsids.append(obsid)
+            prev_pointing = pointing
+
+    return ref_obsids

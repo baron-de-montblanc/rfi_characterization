@@ -200,7 +200,7 @@ def rcos_diff(params, time, vis_amp, N_terms, N_bl, N_freq, theta_0, show_conver
 
 ##Defining the joint model
 #Set show='background' to get the smooth DPSS background and subtract it from the time series
-def rcos_model(time, *params, show='all'):
+def rcos_model(time, N_terms, *params, show='all'):
 
     """ 
     The joint background + emissions model vs time.

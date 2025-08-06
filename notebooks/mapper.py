@@ -17,7 +17,7 @@ from custom_funcs import chan_avg, chan_select
 
 #Defining the data directory and night in file name
 data_dir = "Data"
-night = "109112_p1"
+night = "109086_p1"
 
 #Constructing datapath and constructing ins object using SSINS
 datapath = os.path.join(data_dir, night + "_SSINS_data.h5")
@@ -247,7 +247,7 @@ min_prob = 1e9
 min_fit = 0
 
 #Change this to modify how many events you want to test for
-emit_test_range = 3
+emit_test_range = 1
 
 
 ##To prevent us from falling into local minima, grid seeding allows us to identify the location of the global minimum first.
@@ -398,4 +398,3 @@ def rcos_model(time, *params, show='all'):
     
 ##Returning the background-subtracted time series
 clean_amps = padded_amp - rcos_model(smooth_time, *rcos_fit, show='background')
-print(clean_amps)

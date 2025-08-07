@@ -57,11 +57,11 @@ LOC = np.sort(LOC)
 PEAKS = np.sort(PEAKS)
 
 ##Constructing our DPSS fit coefficient prior
-C0 = np.load('../data/p0_coefficients.npy')
-C1 = np.load('../data/p1_coefficients.npy')
-C2 = np.load('../data/p2_coefficients.npy')
-C3 = np.load('../data/p3_coefficients.npy')
-c4 = np.load('../data/p4_coefficients.npy')
+C0 = np.load('../data/coefficients_p0.npy')
+C1 = np.load('../data/coefficients_p1.npy')
+C2 = np.load('../data/coefficients_p2.npy')
+C3 = np.load('../data/coefficients_p3.npy')
+c4 = np.load('../data/coefficients_p4.npy')
 
 SAMPLES = np.concatenate((C0, C1, C2, C3))
 
@@ -78,7 +78,7 @@ def rcos_diff(params, time, vis_amp, N_terms, N_bl, N_freq, theta_0, show_conver
     ----
 
     params:
-        Concatenated numpy array of DPSS coefficients + emission coefficients. Of the form (13 + 3*num_emissions, ).
+        Concatenated numpy array of DPSS coefficients + emission coefficients. Of the form (24 + 3*num_emissions, ).
         The emission coefficients are ordered as [peaks, loc, width]*num_emissions.as_integer_ratio
 
     time:
@@ -155,7 +155,7 @@ def rcos_diff(params, time, vis_amp, N_terms, N_bl, N_freq, theta_0, show_conver
     prior_mean = np.mean(SAMPLES, axis=0)
     prior_cov = np.cov(SAMPLES.T)
     
-    prior_residual = coeff[:13] - prior_mean
+    prior_residual = coeff[:24] - prior_mean
     
     
     # Full prior construction for coefficients
@@ -164,7 +164,7 @@ def rcos_diff(params, time, vis_amp, N_terms, N_bl, N_freq, theta_0, show_conver
     log_prior_coeff = -0.5 * (
         alpha @ alpha +
         2 * np.sum(np.log(np.diag(L))) +
-        13 * np.log(2*np.pi)
+        24 * np.log(2*np.pi)
     )
 
     
@@ -220,7 +220,7 @@ def rcos_model(time, *params, show='all'):
     Returns:
         background + emission, background only, or emission only, depending on the value of show.
     """
-    N_terms=20
+    N_terms=24
     coeff = params[:N_terms]
     theta = params[N_terms:]
     
@@ -255,7 +255,7 @@ def bg_subtract(data_dir        = "Data",
                 night           = "109112_p1",
                 obsids          = None,
                 chan_name       = "TV7",
-                N_terms         = 20,
+                N_terms         = 24,
                 min_prob        = 1e9,
                 min_fit         = 0,
                 emit_test_range = 3,
@@ -354,7 +354,7 @@ def bg_subtract(data_dir        = "Data",
                 emit_array = np.concatenate((emit_array, [np.mean(theta_0[0]), combos[x, j], np.mean(theta_0[2])]))
             
             #Initial guess (DPSS coeffs + emit params)
-            p0 = np.concatenate((np.mean(SAMPLES, axis=0), np.zeros(shape=(N_terms-13, )), emit_array))
+            p0 = np.concatenate((np.mean(SAMPLES, axis=0), np.zeros(shape=(N_terms-24, )), emit_array))
 
             #Bounds -- in the case of the time loc for emissions, this also implements a flat prior
             bounds = (

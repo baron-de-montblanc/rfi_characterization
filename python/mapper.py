@@ -192,7 +192,7 @@ def rcos_diff(params, time, vis_amp, N_terms, N_bl, N_freq, theta_0, show_conver
 
     #Prints the value of the objective function if set to True
     if show_converg==True:
-        print(-(log_like + log_prior_coeff + log_prior_emit), "\r", end="")
+        print(minus_posterior, "\r", end="")
 
 
     return minus_posterior

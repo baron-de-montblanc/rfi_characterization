@@ -69,7 +69,7 @@ SAMPLES = np.concatenate((C0, C1, C2, C3))
 # ================================== Helper Functions ====================================
 
 
-def rcos_diff(params, time, vis_amp, N_terms, N_bl, N_freq, theta_0, show_converg=False, penalty=5000):
+def rcos_diff(params, time, vis_amp, N_terms, N_bl, N_freq, theta_0, show_converg=False, penalty=0.63):
 
     """ 
     The objective log-posterior function for MAP fitting of the SSINS time series
@@ -188,7 +188,7 @@ def rcos_diff(params, time, vis_amp, N_terms, N_bl, N_freq, theta_0, show_conver
         log_prior_emit=0
 
     #Defining minus the log posterior, the output of our objective function
-    minus_posterior = -(log_like + log_prior_coeff + log_prior_emit) + penalty*num_emissions
+    minus_posterior = -(log_like + log_prior_coeff + log_prior_emit) - num_emissions*np.log(penalty)
 
     #Prints the value of the objective function if set to True
     if show_converg==True:

@@ -192,7 +192,7 @@ def rcos_diff(params, time, vis_amp, N_terms, N_bl, N_freq, theta_0, show_conver
 
     #Prints the value of the objective function if set to True
     if show_converg==True:
-        print(-(log_like + log_prior_coeff + log_prior_emit))
+        print(-(log_like + log_prior_coeff + log_prior_emit), "\r", end="")
 
 
     return minus_posterior
@@ -346,7 +346,7 @@ def bg_subtract(data_dir        = "Data",
 
             #Running through the combinations
             if verbose:
-                print(f"Running cycle #{x+1}...")
+                print(f"Running cycle #{x+1}...", "\r", end="")
 
             #Constructing our initial guess of emission parameters based on our seeds
             emit_array = []

@@ -259,6 +259,7 @@ def bg_subtract(data_dir        = "Data",
                 min_prob        = 1e9,
                 min_fit         = 0,
                 emit_test_range = 3,
+                divs            = 12,
                 show            = 'background',
                 verbose         = False,
                 ):
@@ -274,6 +275,7 @@ def bg_subtract(data_dir        = "Data",
         min_prob (float): Initial value for minimum log-probability (used for tracking best fit)
         min_fit (int): Initial best-fit index (corresponding to emission count)
         emit_test_range (int): Maximum number of emission components to test for during MAP fitting
+        divs (int): # of seeded sidtes to search for emissions at in the time series
         verbose (bool): print extra information to stdout?
 
     Returns:
@@ -333,7 +335,6 @@ def bg_subtract(data_dir        = "Data",
         time_fits = np.empty((0, N_terms + 3*num_emissions))
 
         #Constructing the divisions/seeds in the time grid
-        divs = 10   #Increase this to increase the number of starting seeds
         seeds = np.linspace(smooth_time.min(), smooth_time.max(), divs)
 
         #Constructing the combinations of seeds we can construct using num_emissions

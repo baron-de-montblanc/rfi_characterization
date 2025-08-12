@@ -69,7 +69,7 @@ SAMPLES = np.concatenate((C0, C1, C2, C3))
 # ================================== Helper Functions ====================================
 
 
-def rcos_diff(params, time, vis_amp, N_terms, N_bl, N_freq, theta_0, show_converg=False, penalty=5000):
+def rcos_diff(params, time, vis_amp, N_terms, N_bl, N_freq, theta_0, show_converg=False, penalty=0.63):
 
     """ 
     The objective log-posterior function for MAP fitting of the SSINS time series
@@ -78,7 +78,7 @@ def rcos_diff(params, time, vis_amp, N_terms, N_bl, N_freq, theta_0, show_conver
     ----
 
     params:
-        Concatenated numpy array of DPSS coefficients + emission coefficients. Of the form (13 + 3*num_emissions, ).
+        Concatenated numpy array of DPSS coefficients + emission coefficients. Of the form (N_terms + 3*num_emissions, ).
         The emission coefficients are ordered as [peaks, loc, width]*num_emissions.as_integer_ratio
 
     time:
@@ -155,7 +155,7 @@ def rcos_diff(params, time, vis_amp, N_terms, N_bl, N_freq, theta_0, show_conver
     prior_mean = np.mean(SAMPLES, axis=0)
     prior_cov = np.cov(SAMPLES.T)
     
-    prior_residual = coeff[:13] - prior_mean
+    prior_residual = coeff[:prior_mean.shape[0]] - prior_mean
     
     
     # Full prior construction for coefficients
@@ -164,7 +164,7 @@ def rcos_diff(params, time, vis_amp, N_terms, N_bl, N_freq, theta_0, show_conver
     log_prior_coeff = -0.5 * (
         alpha @ alpha +
         2 * np.sum(np.log(np.diag(L))) +
-        13 * np.log(2*np.pi)
+        prior_mean.shape[0] * np.log(2*np.pi)
     )
 
     
@@ -188,11 +188,11 @@ def rcos_diff(params, time, vis_amp, N_terms, N_bl, N_freq, theta_0, show_conver
         log_prior_emit=0
 
     #Defining minus the log posterior, the output of our objective function
-    minus_posterior = -(log_like + log_prior_coeff + log_prior_emit) + penalty*num_emissions
+    minus_posterior = -(log_like + log_prior_coeff + log_prior_emit) - np.log(1-penalty)*num_emissions
 
     #Prints the value of the objective function if set to True
     if show_converg==True:
-        print(-(log_like + log_prior_coeff + log_prior_emit))
+        print(minus_posterior, "\r", end="")
 
 
     return minus_posterior
@@ -346,7 +346,7 @@ def bg_subtract(data_dir        = "Data",
 
             #Running through the combinations
             if verbose:
-                print(f"Running cycle #{x+1}...")
+                print(f"Running cycle #{x+1}...", "\r", end="")
 
             #Constructing our initial guess of emission parameters based on our seeds
             emit_array = []
@@ -354,7 +354,7 @@ def bg_subtract(data_dir        = "Data",
                 emit_array = np.concatenate((emit_array, [np.mean(theta_0[0]), combos[x, j], np.mean(theta_0[2])]))
             
             #Initial guess (DPSS coeffs + emit params)
-            p0 = np.concatenate((np.mean(SAMPLES, axis=0), np.zeros(shape=(N_terms-13, )), emit_array))
+            p0 = np.concatenate((np.mean(SAMPLES, axis=0), np.zeros(shape=(np.abs(N_terms - 24), )), emit_array))
 
             #Bounds -- in the case of the time loc for emissions, this also implements a flat prior
             bounds = (
@@ -406,7 +406,7 @@ def bg_subtract(data_dir        = "Data",
             bounds=bounds,
             method='Nelder-Mead',
             options={
-                'maxfev': 5000,
+                'maxfev': 30000,
                 'adaptive': True,  
                 'xatol': 1e-5,     
                 'fatol': 1e-4

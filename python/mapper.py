@@ -220,7 +220,7 @@ def rcos_model(time, *params, show='all'):
     Returns:
         background + emission, background only, or emission only, depending on the value of show.
     """
-    N_terms=20
+    N_terms=24
     coeff = params[:N_terms]
     theta = params[N_terms:]
     

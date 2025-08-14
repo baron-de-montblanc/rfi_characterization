@@ -415,5 +415,6 @@ def bg_subtract(data_dir        = "Data",
 
     ##Returning the background-subtracted time series
     clean_amps = padded_amp - rcos_model(smooth_time, *rcos_fit, show=show)
+    noise_err = (np.sqrt((4/np.pi-1)/N_bl/N_freq)*rcos_model(smooth_time, *rcos_fit, show='background'))
 
-    return clean_amps
+    return clean_amps, noise_err

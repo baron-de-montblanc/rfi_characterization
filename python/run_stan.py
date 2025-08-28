@@ -21,9 +21,11 @@ plt.style.use('seaborn-v0_8')
 
 # Global variables
 ABS_DIR = '/users/jmduchar/data/jmduchar/Research/mcgill25/rfi_characterization/'
-STAN_FILE = ABS_DIR+'stan/three_state.stan'
-DATAPATH = ABS_DIR+"data_private/"
+STAN_FILE = ABS_DIR+'stan/semisupervised_three_state.stan'
+DATAPATH = ABS_DIR+"data_private/raw_data/"
+ANNOTATIONPATH = ABS_DIR+"data_private/annotations/"
 ALL_FILES = glob.glob(DATAPATH+"*.npy")
+ALL_ANNOTATIONS = glob.glob(ANNOTATIONPATH+"*.npy")
 
 
 def single_night(idx):
@@ -77,15 +79,34 @@ def entire_pointing(pointing='p0'):
     print("\nPROCESSING ENTIRE POINTING:",pointing,"\n")
     
     all_p = [i for i in ALL_FILES if pointing in i]
+    all_annotations = [i for i in ALL_ANNOTATIONS if pointing in i]
     model = CmdStanModel(stan_file=STAN_FILE)
-    
-    data = []
-    for d in all_p:
-        data.extend(np.load(d))
-    data = np.asarray(data)
+
+    p_filenames = [i.split("/")[-1] for i in all_p]
+    a_filenames = [i.split("/")[-1] for i in all_annotations]
+    a_index = {fn: idx for idx, fn in enumerate(a_filenames)}
+
+    y_unsup = []
+    y_sup = []
+    s_sup = []
+    for pdx, p in enumerate(p_filenames):
+        if p not in a_filenames:
+            y_unsup.extend(np.load(all_p[pdx]))
+        else:
+            y_sup.extend(np.load(all_p[pdx]))
+            aidx = int(a_index[p])
+            s_sup.extend(np.load(all_annotations[aidx]))
+
+    y_unsup = np.asarray(y_unsup)
+    y_sup = np.asarray(y_sup)
+    s_sup = np.asarray(s_sup, dtype=int)
+
     data_dict = {
-        'N': len(data),
-        'y': data.tolist()
+        'N_unsup': len(y_unsup),
+        'y_unsup': y_unsup.tolist(),
+        'N_sup': len(y_sup),
+        'y_sup': y_sup.tolist(),
+        's_sup': s_sup.tolist(),
     }
     
     fit = model.sample(
@@ -104,7 +125,7 @@ def entire_pointing(pointing='p0'):
     plot_data_vs_pred(data, fit, pointing)
     corner_plot(fit, pointing)
     
-    
+
     
 # =====================================================
 #

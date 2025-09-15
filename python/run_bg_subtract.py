@@ -33,7 +33,7 @@ def run_background_subtract(obs_idx):
 
     print(f"Running background subtraction on the night of {ref_obsids[obs_idx][:6]}" 
           +f" at pointing {pointing}...")
-    subtracted_data = bg_subtract(data_dir=dirpath+'tars/', obsids=obsids, N_terms=22)
+    subtracted_data = bg_subtract(data_dir=dirpath+'tars/', obsids=obsids, N_terms=24)[0]
     subtracted_data = subtracted_data[~np.isnan(subtracted_data)]
     
     print("Background subtraction complete! Saving to disk.")

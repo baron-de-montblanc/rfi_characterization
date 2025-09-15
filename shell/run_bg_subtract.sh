@@ -7,7 +7,7 @@
 #SBATCH --account=jpober-condo
 
 # For array jobs, limit the number of simultaneously running jobs using '%'
-#SBATCH --array=0-228%30
+#SBATCH --array=0-228
 
 # Use '%A' for array-job ID, '%J' for job ID and '%a' for task ID
 #SBATCH -e /oscar/data/jpober/jmduchar/Research/mcgill25/rfi_characterization/shell/slurm_out/bg_subtract-%A-%a.out

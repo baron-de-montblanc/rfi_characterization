@@ -11,7 +11,7 @@ from scipy.optimize import minimize
 from itertools import combinations
 from custom_funcs import chan_avg, chan_select
 
-c_gennorm = np.load('coeff_params_gnorm.npy')
+print(np.version.version)
 
 
 
@@ -370,6 +370,7 @@ def bg_subtract(data_dir        = "../data",
                 emit_array = np.concatenate((emit_array, [np.mean(theta_0[0]), combos[x, j], np.mean(theta_0[2])]))
             
             #Initial guess (DPSS coeffs + emit params)
+            c_gennorm = np.load('coeff_params_gnorm.npy')
             p0 = np.concatenate((c_gennorm[:, 1], np.zeros(shape=np.abs(N_terms-25), ), emit_array))
 
             #Bounds -- in the case of the time loc for emissions, this also implements a flat prior

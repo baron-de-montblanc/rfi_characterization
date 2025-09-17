@@ -176,7 +176,7 @@ def rcos_diff(params, time, vis_amp, N_terms, N_bl, N_freq, theta_0, show_conver
     ) """
 
     #Constructing new prior from new distribution
-    c_gennorm = np.load('coeff_params_gnorm.npy')
+    c_gennorm = np.load('../data/coeff_params_gnorm.npy')
     prior_residual = coeff[:c_gennorm.shape[0]] - c_gennorm[:, 1]
     log_prior_coeff = 0
     for k in range(N_terms):
@@ -370,7 +370,7 @@ def bg_subtract(data_dir        = "../data",
                 emit_array = np.concatenate((emit_array, [np.mean(theta_0[0]), combos[x, j], np.mean(theta_0[2])]))
             
             #Initial guess (DPSS coeffs + emit params)
-            c_gennorm = np.load('coeff_params_gnorm.npy')
+            c_gennorm = np.load('../data/coeff_params_gnorm.npy')
             p0 = np.concatenate((c_gennorm[:, 1], np.zeros(shape=np.abs(N_terms-25), ), emit_array))
 
             #Bounds -- in the case of the time loc for emissions, this also implements a flat prior

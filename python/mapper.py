@@ -11,7 +11,7 @@ from scipy.optimize import minimize
 from itertools import combinations
 from custom_funcs import chan_avg, chan_select
 
-c_gennorm = np.load('coeff_params_gnorm.npy')
+c_gennorm = np.load('../data/coeff_params_gnorm.npy')
 
 
 
@@ -176,7 +176,7 @@ def rcos_diff(params, time, vis_amp, N_terms, N_bl, N_freq, theta_0, show_conver
     ) """
 
     #Constructing new prior from new distribution
-    c_gennorm = np.load('coeff_params_gnorm.npy')
+    c_gennorm = np.load('../data/coeff_params_gnorm.npy')
     prior_residual = coeff[:c_gennorm.shape[0]] - c_gennorm[:, 1]
     log_prior_coeff = 0
     for k in range(N_terms):

@@ -72,7 +72,7 @@ SAMPLES = np.concatenate((C0, C1, C2, C3))
 # ================================== Helper Functions ====================================
 
 
-def rcos_diff(params, time, vis_amp, N_terms, N_bl, N_freq, theta_0, show_converg=False, penalty=0.63):
+def rcos_diff(params, time, vis_amp, N_terms, N_bl, N_freq, theta_0, show_converg=False, penalty=0.63, mode='qr'):
 
     """ 
     The objective log-posterior function for MAP fitting of the SSINS time series
@@ -158,30 +158,33 @@ def rcos_diff(params, time, vis_amp, N_terms, N_bl, N_freq, theta_0, show_conver
         len(mod_res) * np.log(2*np.pi)    # Normalization
     )
 
+    if mode == 'default':
 
-    """ #Determining prior mean and covariance for DPSS coefficients
-    prior_mean = np.mean(SAMPLES, axis=0)
-    prior_cov = np.cov(SAMPLES.T)
-    
-    prior_residual = coeff[:prior_mean.shape[0]] - prior_mean
-    
-    
-    # Full prior construction for coefficients
-    L = la.cholesky(prior_cov, lower=True)
-    alpha = la.solve_triangular(L, prior_residual, lower=True)
-    log_prior_coeff = -0.5 * (
-        alpha @ alpha +
-        2 * np.sum(np.log(np.diag(L))) +
-        prior_mean.shape[0] * np.log(2*np.pi)
-    ) """
+        #Determining prior mean and covariance for DPSS coefficients
+        prior_mean = np.mean(SAMPLES, axis=0)
+        prior_cov = np.cov(SAMPLES.T)
+        
+        prior_residual = coeff[:prior_mean.shape[0]] - prior_mean
+        
+        
+        # Full prior construction for coefficients
+        L = la.cholesky(prior_cov, lower=True)
+        alpha = la.solve_triangular(L, prior_residual, lower=True)
+        log_prior_coeff = -0.5 * (
+            alpha @ alpha +
+            2 * np.sum(np.log(np.diag(L))) +
+            prior_mean.shape[0] * np.log(2*np.pi)
+        )
 
-    #Constructing new prior from new distribution
-    c_gennorm = np.load('../data/coeff_params_gnorm.npy')
-    prior_residual = coeff[:c_gennorm.shape[0]] - c_gennorm[:, 1]
-    log_prior_coeff = 0
-    for k in range(N_terms):
-        prior = c_gennorm[k, 0]*np.log(np.abs(prior_residual[k]/c_gennorm[k, 2]))
-        log_prior_coeff += prior
+    elif mode == 'qr':
+
+        #Constructing prior from gennorm marginals
+        c_gennorm = np.load('../data/coeff_params_gnorm.npy')
+        prior_residual = coeff[:c_gennorm.shape[0]] - c_gennorm[:, 1]
+        log_prior_coeff = 0
+        for k in range(N_terms):
+            prior = c_gennorm[k, 0]*np.log(np.abs(prior_residual[k]/c_gennorm[k, 2]))
+            log_prior_coeff += prior
 
 
     #Determining prior mean and covariance for emission coefficients
@@ -278,6 +281,7 @@ def bg_subtract(data_dir        = "../data",
                 emit_test_range = 1,
                 divs            = 12,
                 verbose         = True,
+                mode            = 'qr'
                 ):
     """
     Perform background subtraction on a selected frequency band
@@ -380,7 +384,7 @@ def bg_subtract(data_dir        = "../data",
 
             #Minimizing and probing using Nelder-Mead optimization
             rcos_fit = minimize(
-                lambda p: rcos_diff(p, smooth_time, padded_amp, N_terms, N_bl, N_freq, theta_0),
+                lambda p: rcos_diff(p, smooth_time, padded_amp, N_terms, N_bl, N_freq, theta_0, mode=mode),
                 x0=p0,
                 bounds=bounds,
                 method='Nelder-Mead',
@@ -393,7 +397,7 @@ def bg_subtract(data_dir        = "../data",
             ).x
 
             #Constructing objective function values
-            log_prob_min = rcos_diff(rcos_fit, smooth_time, padded_amp, N_terms, N_bl, N_freq, theta_0)
+            log_prob_min = rcos_diff(rcos_fit, smooth_time, padded_amp, N_terms, N_bl, N_freq, theta_0, mode=mode)
             log_prob = np.append(log_prob, log_prob_min)
             time_fits = np.vstack([time_fits, rcos_fit])
 
@@ -416,16 +420,9 @@ def bg_subtract(data_dir        = "../data",
                 ([(0, None), (0, smooth_time.max()), (0, smooth_time.max())] * num_emissions)
             )
 
-
-    history = []
-
-    # Callback appends current objective value to history
-    #callback = lambda xk: history.append([rcos_diff(xk, smooth_time, padded_amp, N_terms, N_bl, N_freq, theta_0)])
-    callback = lambda xk: history.append([xk])
-
     ##Doing a proper long minimization
     rcos_fit = minimize(
-            lambda p: rcos_diff(p, smooth_time, padded_amp, N_terms, N_bl, N_freq, theta_0, show_converg=True),
+            lambda p: rcos_diff(p, smooth_time, padded_amp, N_terms, N_bl, N_freq, theta_0, show_converg=verbose, mode=mode),
             x0=p0,
             bounds=bounds,
             method='Nelder-Mead',
@@ -435,7 +432,6 @@ def bg_subtract(data_dir        = "../data",
                 'xatol': 1e-5,     
                 'fatol': 1e-4
             },
-            callback=callback
         ).x
 
     ##Returning the background-subtracted time series
@@ -443,4 +439,4 @@ def bg_subtract(data_dir        = "../data",
     clean_amps = padded_amp - smooth
     noise_err = np.sqrt((4-np.pi)/(2*N_bl*N_freq))*smooth
 
-    return clean_amps, history, padded_amp, smooth, noise_err
+    return clean_amps, padded_amp, smooth, noise_err

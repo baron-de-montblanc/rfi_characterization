@@ -251,7 +251,7 @@ def rcos_model(time, *params, show='all'):
 # ================================== Main Procedure ====================================
 
 
-def bg_subtract(data_dir        = "Data", 
+def bg_subtract(data_dir        = "data", 
                 night           = "109112_p1",
                 obsids          = None,
                 chan_name       = "TV7",

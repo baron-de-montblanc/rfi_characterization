@@ -11,10 +11,6 @@ from scipy.optimize import minimize
 from itertools import combinations
 from custom_funcs import chan_avg, chan_select
 
-c_gennorm = np.load('../data/coeff_params_gnorm.npy')
-
-
-
 
 # ================================== Global parameters ====================================
 
@@ -61,10 +57,11 @@ LOC = np.sort(LOC)
 PEAKS = np.sort(PEAKS)
 
 ##Constructing our DPSS fit coefficient prior
-C0 = np.load('../data/coefficients_p0.npy')
-C1 = np.load('../data/coefficients_p1.npy')
-C2 = np.load('../data/coefficients_p2.npy')
-C3 = np.load('../data/coefficients_p3.npy')
+C0 = np.load('../data/p0_coefficients.npy')
+C1 = np.load('../data/p1_coefficients.npy')
+C2 = np.load('../data/p2_coefficients.npy')
+C3 = np.load('../data/p3_coefficients.npy')
+c4 = np.load('../data/p4_coefficients.npy')
 
 SAMPLES = np.concatenate((C0, C1, C2, C3))
 
@@ -72,7 +69,7 @@ SAMPLES = np.concatenate((C0, C1, C2, C3))
 # ================================== Helper Functions ====================================
 
 
-def rcos_diff(params, time, vis_amp, N_terms, N_bl, N_freq, theta_0, show_converg=False, penalty=0.63, mode='qr'):
+def rcos_diff(params, time, vis_amp, N_terms, N_bl, N_freq, theta_0, show_converg=False, penalty=0.63):
 
     """ 
     The objective log-posterior function for MAP fitting of the SSINS time series
@@ -116,14 +113,9 @@ def rcos_diff(params, time, vis_amp, N_terms, N_bl, N_freq, theta_0, show_conver
     theta = params[N_terms:]
     
     #Constructing our DPSS basis
-    NW, K = 4, N_terms-1
-    basis = dpss(time.shape[0], NW, K)
-    design = np.concatenate(([np.ones(shape=(time.shape[0],))], basis)).T
-    Q = np.linalg.qr(design, mode='reduced')[0]
-    background = Q @ coeff
-    #print(Q.shape)
-
-    
+    NW, K = 4, N_terms
+    design = dpss(len(time), NW, K).T
+    background = design @ coeff
 
     #Building our emissions
     emission = np.zeros_like(time)
@@ -158,35 +150,24 @@ def rcos_diff(params, time, vis_amp, N_terms, N_bl, N_freq, theta_0, show_conver
         len(mod_res) * np.log(2*np.pi)    # Normalization
     )
 
-    if mode == 'default':
 
-        #Determining prior mean and covariance for DPSS coefficients
-        prior_mean = np.mean(SAMPLES, axis=0)
-        prior_cov = np.cov(SAMPLES.T)
-        
-        prior_residual = coeff[:prior_mean.shape[0]] - prior_mean
-        
-        
-        # Full prior construction for coefficients
-        L = la.cholesky(prior_cov, lower=True)
-        alpha = la.solve_triangular(L, prior_residual, lower=True)
-        log_prior_coeff = -0.5 * (
-            alpha @ alpha +
-            2 * np.sum(np.log(np.diag(L))) +
-            prior_mean.shape[0] * np.log(2*np.pi)
-        )
+    #Determining prior mean and covariance for DPSS coefficients
+    prior_mean = np.mean(SAMPLES, axis=0)
+    prior_cov = np.cov(SAMPLES.T)
+    
+    prior_residual = coeff[:prior_mean.shape[0]] - prior_mean
+    
+    
+    # Full prior construction for coefficients
+    L = la.cholesky(prior_cov, lower=True)
+    alpha = la.solve_triangular(L, prior_residual, lower=True)
+    log_prior_coeff = -0.5 * (
+        alpha @ alpha +
+        2 * np.sum(np.log(np.diag(L))) +
+        prior_mean.shape[0] * np.log(2*np.pi)
+    )
 
-    elif mode == 'qr':
-
-        #Constructing prior from gennorm marginals
-        c_gennorm = np.load('../data/coeff_params_gnorm.npy')
-        prior_residual = coeff[:c_gennorm.shape[0]] - c_gennorm[:, 1]
-        log_prior_coeff = 0
-        for k in range(N_terms):
-            prior = c_gennorm[k, 0]*np.log(np.abs(prior_residual[k]/c_gennorm[k, 2]))
-            log_prior_coeff += prior
-
-
+    
     #Determining prior mean and covariance for emission coefficients
     emit_mean = np.mean(theta_0[[0, 2]], axis=1)
     emit_cov = la.block_diag(*[np.cov(theta_0[[0, 2]])] * num_emissions)
@@ -239,16 +220,15 @@ def rcos_model(time, *params, show='all'):
     Returns:
         background + emission, background only, or emission only, depending on the value of show.
     """
-    N_terms=25
+    N_terms=24
     coeff = params[:N_terms]
     theta = params[N_terms:]
     
-    #Constructing our DPSS basis
-    NW, K = 4, N_terms-1
-    basis = dpss(time.shape[0], NW, K)
-    design = np.concatenate(([np.ones(shape=(time.shape[0],))], basis)).T
-    Q = np.linalg.qr(design, mode='reduced')[0]
-    background = Q @ coeff
+    NW, K = 4, N_terms   
+    basis = dpss(len(time), NW, K)
+    design = basis.T
+    
+    background = design @ coeff
 
     emission = np.zeros_like(time)
     num_emissions = len(theta) // 3
@@ -271,17 +251,17 @@ def rcos_model(time, *params, show='all'):
 # ================================== Main Procedure ====================================
 
 
-def bg_subtract(data_dir        = "../data", 
+def bg_subtract(data_dir        = "Data", 
                 night           = "109112_p1",
                 obsids          = None,
                 chan_name       = "TV7",
-                N_terms         = 25,
-                min_prob        = 1e20,
+                N_terms         = 24,
+                min_prob        = 1e9,
                 min_fit         = 0,
-                emit_test_range = 1,
+                emit_test_range = 3,
                 divs            = 12,
-                verbose         = True,
-                mode            = 'qr'
+                show            = 'background',
+                verbose         = False,
                 ):
     """
     Perform background subtraction on a selected frequency band
@@ -374,7 +354,7 @@ def bg_subtract(data_dir        = "../data",
                 emit_array = np.concatenate((emit_array, [np.mean(theta_0[0]), combos[x, j], np.mean(theta_0[2])]))
             
             #Initial guess (DPSS coeffs + emit params)
-            p0 = np.concatenate((c_gennorm[:, 1], np.zeros(shape=np.abs(N_terms-25), ), emit_array))
+            p0 = np.concatenate((np.mean(SAMPLES, axis=0), np.zeros(shape=(np.abs(N_terms - 24), )), emit_array))
 
             #Bounds -- in the case of the time loc for emissions, this also implements a flat prior
             bounds = (
@@ -384,7 +364,7 @@ def bg_subtract(data_dir        = "../data",
 
             #Minimizing and probing using Nelder-Mead optimization
             rcos_fit = minimize(
-                lambda p: rcos_diff(p, smooth_time, padded_amp, N_terms, N_bl, N_freq, theta_0, mode=mode),
+                lambda p: rcos_diff(p, smooth_time, padded_amp, N_terms, N_bl, N_freq, theta_0),
                 x0=p0,
                 bounds=bounds,
                 method='Nelder-Mead',
@@ -397,7 +377,7 @@ def bg_subtract(data_dir        = "../data",
             ).x
 
             #Constructing objective function values
-            log_prob_min = rcos_diff(rcos_fit, smooth_time, padded_amp, N_terms, N_bl, N_freq, theta_0, mode=mode)
+            log_prob_min = rcos_diff(rcos_fit, smooth_time, padded_amp, N_terms, N_bl, N_freq, theta_0)
             log_prob = np.append(log_prob, log_prob_min)
             time_fits = np.vstack([time_fits, rcos_fit])
 
@@ -413,7 +393,6 @@ def bg_subtract(data_dir        = "../data",
 
     ##Constructing our best guess after cycling through all seed combos and emission numbers
     p0 = min_fit
-    print(min_fit)
     num_emissions = int((len(p0) - N_terms)/3)
     bounds = (
                 [(-1e5, 1e5)] * N_terms +
@@ -422,21 +401,20 @@ def bg_subtract(data_dir        = "../data",
 
     ##Doing a proper long minimization
     rcos_fit = minimize(
-            lambda p: rcos_diff(p, smooth_time, padded_amp, N_terms, N_bl, N_freq, theta_0, show_converg=verbose, mode=mode),
+            lambda p: rcos_diff(p, smooth_time, padded_amp, N_terms, N_bl, N_freq, theta_0),
             x0=p0,
             bounds=bounds,
             method='Nelder-Mead',
             options={
-                'maxfev': 10000,
+                'maxfev': 30000,
                 'adaptive': True,  
                 'xatol': 1e-5,     
                 'fatol': 1e-4
-            },
+            }
         ).x
 
     ##Returning the background-subtracted time series
-    smooth = rcos_model(smooth_time, *rcos_fit, show='background')
-    clean_amps = padded_amp - smooth
-    noise_err = np.sqrt((4-np.pi)/(2*N_bl*N_freq))*smooth
+    clean_amps = padded_amp - rcos_model(smooth_time, *rcos_fit, show=show)
+    noise_err = (np.sqrt((4/np.pi-1)/N_bl/N_freq)*rcos_model(smooth_time, *rcos_fit, show='background'))
 
-    return clean_amps, padded_amp, smooth, noise_err
+    return clean_amps, noise_err

@@ -56,10 +56,10 @@ LOC = np.sort(LOC)
 PEAKS = np.sort(PEAKS)
 
 ##Constructing our DPSS fit coefficient prior
-C0 = np.load('../data/coefficients_p0.npy')
-C1 = np.load('../data/coefficients_p1.npy')
-C2 = np.load('../data/coefficients_p2.npy')
-C3 = np.load('../data/coefficients_p3.npy')
+C0 = np.load('../data/p0_coefficients.npy')
+C1 = np.load('../data/p1_coefficients.npy')
+C2 = np.load('../data/p2_coefficients.npy')
+C3 = np.load('../data/p3_coefficients.npy')
 
 SAMPLES = np.concatenate((C0, C1, C2, C3))
 
@@ -95,8 +95,10 @@ def rcos_diff(params, time, vis_amp, N_bl, N_freq, theta_0, show_converg=False, 
         Int. Number of frequency channels
     
     penalty:
-        Penalty factor that penalizes high emission numbers. 
-        Future step: properly define this to give the Poisson distribution for airplane emissions.
+        Penalty factor that penalizes high emission numbers.
+
+    mode:
+        "default" or "c-subtract". "default" uses vanilla DPSS basis, "c-subtract" uses constant offset + DPSS perturbations
 
     Returns
     -------
@@ -243,8 +245,13 @@ def rcos_model(time, *params, show='all', mode='default'):
 
     show:
         If set to 'all', will return background + emissions. If set to 'background', will return background. If set to 'emit', will return emissions.
+
+    mode:
+        "default" or "c-subtract". "default" uses vanilla DPSS basis, "c-subtract" uses constant offset + DPSS perturbations.
+        
     
-    Returns:
+    Returns
+    -----
         background + emission, background only, or emission only, depending on the value of show.
     """
 
@@ -320,6 +327,7 @@ def bg_subtract(data_dir        = "../data",
         emit_test_range (int): Maximum number of emission components to test for during MAP fitting
         divs (int): # of seeded sidtes to search for emissions at in the time series
         verbose (bool): print extra information to stdout?
+        mode: "default" or "c-subtract". "default" uses vanilla DPSS basis, "c-subtract" uses constant offset + DPSS perturbations.
 
     Returns:
 

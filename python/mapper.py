@@ -251,7 +251,7 @@ def rcos_model(time, *params, show='all'):
 # ================================== Main Procedure ====================================
 
 
-def bg_subtract(data_dir        = "data", 
+def bg_subtract(data_dir        = "Data", 
                 night           = "109112_p1",
                 obsids          = None,
                 chan_name       = "TV7",
@@ -302,6 +302,7 @@ def bg_subtract(data_dir        = "data",
     #Extracting and averaging over the selected subband
     ins_subband, masked_ins, N_bl, N_freq = chan_select(ins, chan_name, TV_DICT)
     time, amp = chan_avg(ins_subband)
+    masked_time, masked_amp = chan_avg(masked_ins)
 
     #Constructing our prior sample matrix
     theta_0 = np.vstack((PEAKS, LOC*(np.max(time) - np.min(time)), WIDTHS))

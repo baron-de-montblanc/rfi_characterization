@@ -57,11 +57,10 @@ LOC = np.sort(LOC)
 PEAKS = np.sort(PEAKS)
 
 ##Constructing our DPSS fit coefficient prior
-C0 = np.load('../data/p0_coefficients.npy')
-C1 = np.load('../data/p1_coefficients.npy')
-C2 = np.load('../data/p2_coefficients.npy')
-C3 = np.load('../data/p3_coefficients.npy')
-c4 = np.load('../data/p4_coefficients.npy')
+C0 = np.load('../data/coefficients_p0.npy')
+C1 = np.load('../data/coefficients_p1.npy')
+C2 = np.load('../data/coefficients_p2.npy')
+C3 = np.load('../data/coefficients_p3.npy')
 
 SAMPLES = np.concatenate((C0, C1, C2, C3))
 
@@ -251,7 +250,7 @@ def rcos_model(time, *params, show='all'):
 # ================================== Main Procedure ====================================
 
 
-def bg_subtract(data_dir        = "Data", 
+def bg_subtract(data_dir        = "../data", 
                 night           = "109112_p1",
                 obsids          = None,
                 chan_name       = "TV7",

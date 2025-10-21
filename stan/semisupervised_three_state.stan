@@ -27,6 +27,8 @@ data {
     int<lower=1> N_sup;        // length of sequence (supervised)
     vector[N_sup] y_sup;       // observations (supervised)
     array[N_sup] int<lower=1, upper=4> s_sup; // 1=clean,2=rising,3=decay,4=blip
+
+    real<lower=0> sigma;
 }
 
 parameters {
@@ -35,7 +37,7 @@ parameters {
     simplex[4] theta_decay;    // from decay: [to clean, to rising, to decay, to blip]
     simplex[4] theta_blip;     // from blip:  [to clean, to rising, to decay, to blip]
 
-    real log_sigma;
+    // real log_sigma;
     real<lower=1> rate_rising;
     real<lower=0, upper=1> rate_decay;
 
@@ -46,7 +48,7 @@ parameters {
 
 
 transformed parameters{
-    real sigma = exp(log_sigma);
+    // real sigma = exp(log_sigma);
     real tau_blip = sigma*exp(log_k_blip);
 
     // Transition log-matrix Tlog[from, to]
@@ -86,7 +88,7 @@ transformed parameters{
 model {
 
     // ---------- Priors ----------
-    log_sigma   ~ normal(0, 1);
+    // log_sigma   ~ normal(0, 1);
     rate_decay  ~ beta(2, 2);
     rate_rising ~ normal(2 - rate_decay, 0.05);
 
@@ -95,11 +97,11 @@ model {
     log_k_blip  ~ normal(0, 1);
 
     // Transition priors (make blips rare; blip self-loop especially rare)
-    theta_clean  ~ dirichlet([9.0, 1.0, 0.2]');        // clean->blip small
-    theta_rising ~ dirichlet([8.0, 2.0, 0.2]');        // rising->blip small
-    theta_decay  ~ dirichlet([5.0, 0.5, 4.5, 0.2]');   // decay->blip small
-    theta_blip   ~ dirichlet([8.0, 0.5, 0.5, 0.1]');   // exit to clean; self-loop tiny
-
+    theta_clean  ~ dirichlet(to_vector({9.0, 1.0, 0.2}));
+    theta_rising ~ dirichlet(to_vector({8.0, 2.0, 0.2}));
+    theta_decay  ~ dirichlet(to_vector({5.0, 0.5, 4.5, 0.2}));
+    theta_blip   ~ dirichlet(to_vector({8.0, 0.5, 0.5, 0.1}));
+ 
     // ---------- Unsupervised: Forward algorithm ----------
     array[N_unsup] vector[4] gamma; // joint log-likelihood of first t states
 

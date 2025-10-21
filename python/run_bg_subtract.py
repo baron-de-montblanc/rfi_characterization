@@ -11,7 +11,6 @@ import yaml
 import os
 import glob
 import json
-from astropy.io import fits
 import h5py
 import matplotlib.pyplot as plt
 import time

@@ -1,7 +1,9 @@
 ##Importing necessary packages
 import numpy as np
 from SSINS import INS
+import os
 
+ABS_DIR = '/users/jmduchar/data/jmduchar/Research/mcgill25/rfi_characterization/'
 
 ##Defining two important functions -- the frequency channel selection and averaging functions.
 
@@ -49,7 +51,7 @@ def chan_select(ins, chan_name, shape_dict):
     masked_ins.metric_array = masked_data
     
     #Getting rid of the pesky subband lines
-    line_mask = np.load('../data/linemask.npy')[subband_chans]
+    line_mask = np.load(os.path.join(ABS_DIR, 'data/linemask.npy'))[subband_chans]
     ins_subband.metric_array = ins_subband.metric_array[:, ~line_mask, :]
     ins_subband.freq_array = ins_subband.freq_array[~line_mask]
     masked_ins.metric_array = masked_ins.metric_array[:, ~line_mask, :]

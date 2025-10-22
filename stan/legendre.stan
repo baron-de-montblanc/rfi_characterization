@@ -24,7 +24,7 @@ functions {
 }
 
 data {
-  int<lower=1> L;                       // number of Legendre modes used
+  int<lower=1> L; // number of Legendre modes used
 
   // ----------------------- Unsupervised sequence -----------------------
   int<lower=0> N_unsup;  // If this is 0, we have a fully supervised model. And vice-versa

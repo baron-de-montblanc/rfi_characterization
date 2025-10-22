@@ -14,6 +14,8 @@ from custom_funcs import chan_avg, chan_select
 
 # ================================== Global parameters ====================================
 
+ABS_DIR = '/users/jmduchar/data/jmduchar/Research/mcgill25/rfi_characterization/'
+
 # Defining shape dictionary
 TV_DICT = {
     'TV6': [1.74e8, 1.81e8],
@@ -51,17 +53,16 @@ WIDTHS = np.array([46.35740966, 47.78082138, 52.01985143, 51.1243677, 48.6657998
         39.30030286, 25.61981977, 60.45653745, 36.25104968, 50.26782436, 66.64052355, 64.69421242, 35.47301949,
         57.35702717, 62.72083288, 57.83072425, 72.39670654, 7.68408292e+01, 56.47607773, 58.60065642, 58.92762818])
 
-
 WIDTHS = np.sort(WIDTHS)/60/60/24   #Rescaling to Julian time units
 LOC = np.sort(LOC)
 PEAKS = np.sort(PEAKS)
 
 ##Constructing our DPSS fit coefficient prior
-C0 = np.load('../data/p0_coefficients.npy')
-C1 = np.load('../data/p1_coefficients.npy')
-C2 = np.load('../data/p2_coefficients.npy')
-C3 = np.load('../data/p3_coefficients.npy')
-c4 = np.load('../data/p4_coefficients.npy')
+C0 = np.load(os.path.join(ABS_DIR, 'data/p0_coefficients.npy'))
+C1 = np.load(os.path.join(ABS_DIR, 'data/p1_coefficients.npy'))
+C2 = np.load(os.path.join(ABS_DIR, 'data/p2_coefficients.npy'))
+C3 = np.load(os.path.join(ABS_DIR, 'data/p3_coefficients.npy'))
+c4 = np.load(os.path.join(ABS_DIR, 'data/p4_coefficients.npy'))
 
 SAMPLES = np.concatenate((C0, C1, C2, C3))
 
@@ -200,7 +201,7 @@ def rcos_diff(params, time, vis_amp, N_terms, N_bl, N_freq, theta_0, show_conver
 
 ##Defining the joint model
 #Set show='background' to get the smooth DPSS background and subtract it from the time series
-def rcos_model(time, *params, show='all'):
+def rcos_model(time, N_terms, *params, show='all'):
 
     """ 
     The joint background + emissions model vs time.
@@ -415,7 +416,7 @@ def bg_subtract(data_dir        = "Data",
         ).x
 
     ##Returning the background-subtracted time series
-    clean_amps = padded_amp - rcos_model(smooth_time, *rcos_fit, show=show)
-    noise_err = (np.sqrt((4/np.pi-1)/N_bl/N_freq)*rcos_model(smooth_time, *rcos_fit, show='background'))
+    clean_amps = padded_amp - rcos_model(smooth_time, N_terms, *rcos_fit, show=show)
+    noise_err = (np.sqrt((4/np.pi-1)/N_bl/N_freq)*rcos_model(smooth_time, N_terms, *rcos_fit, show='background'))
 
     return clean_amps, noise_err

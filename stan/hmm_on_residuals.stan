@@ -3,17 +3,17 @@
 
 functions {
   // Emission log-prob for state s
-  real emit_logprob(int s, real y_t, real y_tm1, real sigma,
+  real emit_logprob(int s, real z_t, real z_tm1, real sigma,
                real rate_rising, real rate_decay,
                real mu_blip, real tau_blip) {
     if (s == 1) { // clean
-      return normal_lpdf(y_t | 0, sigma);
+      return normal_lpdf(z_t | 0, sigma);
     } else if (s == 2) { // rising
-      return normal_lpdf(y_t | rate_rising * y_tm1, sigma);
+      return normal_lpdf(z_t | rate_rising * z_tm1, sigma);
     } else if (s == 3) { // decay
-      return normal_lpdf(y_t | rate_decay * y_tm1, sigma);
+      return normal_lpdf(z_t | rate_decay * z_tm1, sigma);
     } else { // s == 4, blip (heavy-tailed spike)
-      return student_t_lpdf(y_t | 3, mu_blip, tau_blip);
+      return student_t_lpdf(z_t | 3, mu_blip, tau_blip);
     }
   }
 }
@@ -141,44 +141,51 @@ model {
 
 
 generated quantities {
-  array[N_unsup] int<lower=1, upper=4> viterbi;
-  real log_p_state;
+  vector[N_unsup] post_clean;
 
-  { // Viterbi algorithm
-    array[N_unsup, 4] int back_ptr;
-    array[N_unsup, 4] real best_logp;
+  {
+    // Precompute emission log-probs for all t,s
+    array[N_unsup] vector[4] emit;
+    for (s in 1:4)
+      emit[1][s] = emit_logprob(s, y_unsup[1], 0, sigma,
+                                rate_rising, rate_decay, mu_blip, tau_blip);
+    for (t in 2:N_unsup)
+      for (s in 1:4)
+        emit[t][s] = emit_logprob(s, y_unsup[t], y_unsup[t-1], sigma,
+                                  rate_rising, rate_decay, mu_blip, tau_blip);
 
-    // t = 1
-    for (s in 1:4) {
-      best_logp[1, s] = emit_logprob(s, y_unsup[1], 0, sigma, rate_rising, rate_decay, mu_blip, tau_blip);
-      back_ptr[1, s] = 1;
-    }
-
+    // Forward messages (alpha)
+    array[N_unsup] vector[4] alpha;
+    alpha[1] = emit[1];
     for (t in 2:N_unsup) {
-      for (k in 1:4) {
-        real b = negative_infinity();
-        int arg = 1;
-        for (j in 1:4) {
-          real cand = best_logp[t - 1, j] + Tlog[j, k];
-          if (cand > b) { b = cand; arg = j; }
-        }
-        best_logp[t, k] = b + emit_logprob(k, y_unsup[t], y_unsup[t - 1],
-                                 sigma, rate_rising, rate_decay, mu_blip, tau_blip);
-        back_ptr[t, k] = arg;
+      vector[4] tmp;
+      for (s in 1:4) {
+        vector[4] acc;
+        for (sp in 1:4) acc[sp] = alpha[t-1][sp] + Tlog[sp, s];
+        tmp[s] = log_sum_exp(acc) + emit[t][s];
+      }
+      alpha[t] = tmp;
+    }
+    real logZ = log_sum_exp(alpha[N_unsup]);
+
+    // Backward messages (beta)
+    array[N_unsup] vector[4] beta;
+    for (s in 1:4) beta[N_unsup][s] = 0;
+    for (tt in 1:(N_unsup - 1)) {
+      int t = N_unsup - tt;
+      for (s in 1:4) {
+        vector[4] acc;
+        for (sp in 1:4)
+          acc[sp] = Tlog[s, sp] + emit[t + 1][sp] + beta[t + 1][sp];
+        beta[t][s] = log_sum_exp(acc);
       }
     }
 
-    // Terminate + backtrack
-    int max_state = 1;
-    log_p_state = best_logp[N_unsup, 1];
-    for (k in 2:4)
-      if (best_logp[N_unsup, k] > log_p_state) { max_state = k; log_p_state = best_logp[N_unsup, k]; }
-    viterbi[N_unsup] = max_state;
-
-    for (t in 1:(N_unsup - 1)) {
-      int tt = N_unsup - t;
-      viterbi[tt] = back_ptr[tt + 1, viterbi[tt + 1]];
+    // Posterior marginals for Clean: w_t = P(s_t = Clean | data, params)
+    for (t in 1:N_unsup) {
+      vector[4] log_post = alpha[t] + beta[t] - logZ;
+      vector[4] post = softmax(log_post);
+      post_clean[t] = post[1];
     }
-
   }
 }

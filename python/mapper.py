@@ -222,7 +222,7 @@ def rcos_diff(params, time, vis_amp, N_bl, N_freq, theta_0, show_converg=False, 
     minus_posterior = -(log_like + log_prior_coeff + log_prior_emit) - np.log(1-penalty)*num_emissions
 
     #Prints the value of the objective function if set to True
-    if show_converg==True:
+    if show_converg:
         print(minus_posterior, "\r", end="")
 
 

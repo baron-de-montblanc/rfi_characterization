@@ -1,6 +1,5 @@
 ##Importing necessary packages
 import numpy as np
-from SSINS import INS
 import os
 
 ABS_DIR = '/users/jmduchar/data/jmduchar/Research/mcgill25/rfi_characterization/'

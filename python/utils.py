@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 import corner
-from scipy.stats import norm, cauchy, mode, t
+from scipy.stats import norm, mode, t
 import arviz as az
 plt.style.use('seaborn-v0_8')
 
@@ -90,6 +90,7 @@ def get_ref_obsids(
 
 def plot_supervised_inputs(
         data_dict, 
+        pointing,
         save_path=None,
     ):
     
@@ -209,7 +210,7 @@ def transition_corner_plot(
     )
 
     if save_path is not None:
-        plt.savefig(os.path.join(save_path, f"transition_corner.png"), dpi=300, bbox_inches='tight')
+        plt.savefig(os.path.join(save_path, "transition_corner.png"), dpi=300, bbox_inches='tight')
 
     plt.show()
 
@@ -246,7 +247,7 @@ def emission_corner_plot(
     )
 
     if save_path is not None:
-        plt.savefig(os.path.join(save_path, f"emission_corner.png"), dpi=300, bbox_inches='tight')
+        plt.savefig(os.path.join(save_path, "emission_corner.png"), dpi=300, bbox_inches='tight')
 
     plt.show()
 
@@ -358,7 +359,7 @@ def plot_prediction_hist(
 
     plt.tight_layout()
     if save_path is not None:
-        plt.savefig(os.path.join(save_path, f"label_hist_overlay.png"), dpi=300, bbox_inches='tight')
+        plt.savefig(os.path.join(save_path, "label_hist_overlay.png"), dpi=300, bbox_inches='tight')
 
     plt.show()
 

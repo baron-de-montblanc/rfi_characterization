@@ -1,22 +1,12 @@
-# Run background subtraction on a given night
-
 import sys
-sys.path.append('/users/jmduchar/data/jmduchar/Research/mcgill25/rfi_characterization/python/')
-
-import warnings
-warnings.filterwarnings("ignore")
-
 import numpy as np
 import yaml
-import os
-import glob
-import json
-import h5py
 import matplotlib.pyplot as plt
 import time
 
+sys.path.append('/users/jmduchar/data/jmduchar/Research/mcgill25/rfi_characterization/python/')
 from mapper import bg_subtract
-from utils import *
+from utils import get_ref_obsids, get_night
 
 plt.style.use('seaborn-v0_8')
 ABS_DIR = '/users/jmduchar/data/jmduchar/Research/mcgill25/'

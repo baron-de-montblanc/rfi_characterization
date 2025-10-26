@@ -1,9 +1,6 @@
-import sys
-import time
 import numpy as np
 from numpy.polynomial.legendre import legvander
 import matplotlib.pyplot as plt
-from cmdstanpy import CmdStanModel
 import json
 import glob
 
@@ -13,8 +10,6 @@ plt.style.use('seaborn-v0_8')
 
 
 ABS_DIR = '/users/jmduchar/data/jmduchar/Research/mcgill25/rfi_characterization/'
-STAN_FILE = ABS_DIR+'stan/legendre.stan'
-DATA_SAVE_PATH = ABS_DIR+"/data/json/legendre_semisupervised"
 
 DATAPATH = ABS_DIR+"data_private/raw_data/"
 ANNOTATIONPATH = ABS_DIR+"data_private/annotations/"
@@ -62,7 +57,7 @@ def obs_pointing_key(path):
     return (obs, p)
 
 
-def create_data_dict(pointing, L, sigma=0.33, save_data=True):
+def create_data_dict_hmm(pointing, z, start_idx, stop_idx, sigma=0.33, save_data=False, data_save_path=None):
 
     all_p = [i for i in ALL_FILES if pointing in i and "bad" not in i]
     all_annotations = [i for i in ALL_ANNOTATIONS if pointing in i and "bad" not in i]
@@ -71,13 +66,75 @@ def create_data_dict(pointing, L, sigma=0.33, save_data=True):
     ann_night_pointing = set(obs_pointing_key(i) for i in all_annotations)
 
     y_unsup_list, y_sup_list = [], []
-    A_unsup_rows, A_sup_rows = [], []
-    start_stop_unsup, start_stop_sup = [], []
     s_sup_list = []
 
-    c_unsup = 0
-    c_sup = 0
+    c = 0
+    for pdx, (obs,p) in enumerate(all_night_pointing):
+        
+        if (obs,p) not in ann_night_pointing:  # UNSUP NIGHT
+            y_unsup_list.append(z[start_idx[c]-1 : stop_idx[c]])  # guarding against Stan's 1-based inclusive indexing
+            
+        else:  # SUP NIGHT
+            sup_sample = z[start_idx[c]-1 : stop_idx[c]]
+            y_sup_list.append(sup_sample)
+            
+            # Find the corresponding annotations
+            for annotation in all_annotations:
+                if obs in annotation and p in annotation:
+                    labels = np.load(annotation).astype(int)
+                
+            assert len(labels) == len(sup_sample)
+            s_sup_list.append(labels.astype(int))
 
+        c += 1
+
+    # Concatenate
+    if len(y_unsup_list) > 0:
+        y_unsup = np.concatenate(y_unsup_list, axis=0)
+    else:
+        y_unsup = np.empty((0,), dtype=float)
+        
+    if len(y_sup_list) > 0:
+        y_sup = np.concatenate(y_sup_list, axis=0)
+        s_sup = np.concatenate(s_sup_list, axis=0)
+    else:
+        y_sup = np.empty((0,), dtype=float)
+        s_sup = np.empty((0,), dtype=float)
+
+    # Build dictionary
+    data_dict = {
+        'N_unsup':         int(len(y_unsup)),
+        'y_unsup':         y_unsup.tolist(),
+        
+        'N_sup':           int(len(y_sup)),
+        'y_sup':           y_sup.tolist(),
+        's_sup':           s_sup.tolist(),
+ 
+        'sigma':           sigma,
+    }
+
+    if save_data:
+        with open(
+            data_save_path,
+            "w"
+        ) as f:
+            json.dump(data_dict, f, indent=2)
+
+    return data_dict
+
+
+def create_data_dict_bg(pointing, L, sigma=0.33, save_data=False, data_save_path=None):
+    """
+    Initialize data dictionary (first pass only)
+    """
+
+    all_p = [i for i in ALL_FILES if pointing in i and "bad" not in i]
+    all_night_pointing = [obs_pointing_key(i) for i in all_p]
+
+    y_list = []
+    A_rows = []
+    start_stop = []
+    c = 0
     for pdx, (obs,p) in enumerate(all_night_pointing):
         
         sample = np.load(all_p[pdx])
@@ -88,108 +145,45 @@ def create_data_dict(pointing, L, sigma=0.33, save_data=True):
         
         A = build_legendre_design_matrix(sample, L) 
         
-        if (obs,p) not in ann_night_pointing:  # UNSUP NIGHT
-            y_unsup_list.append(sample.astype(float))
-            A_unsup_rows.append(A.astype(float))
-            
-            a = c_unsup
-            b = c_unsup + len(sample) - 1
-            start_stop_unsup.append((a, b))
-            c_unsup += len(sample)
-            
-        else:  # SUP NIGHT
-            y_sup_list.append(sample.astype(float))
-            A_sup_rows.append(A.astype(float))
-            
-            # Find the corresponding annotations
-            for annotation in all_annotations:
-                if obs in annotation and p in annotation:
-                    labels = np.load(annotation).astype(int)
-                
-            assert len(labels) == len(sample)
-            s_sup_list.append(labels.astype(int))
-            a = c_sup
-            b = c_sup + len(sample) - 1
-            start_stop_sup.append((a, b))
-            c_sup += len(sample)
+        y_list.append(sample.astype(float))
+        A_rows.append(A.astype(float))
+        
+        a = c
+        b = c + len(sample) - 1
+        start_stop.append((a, b))
+        c += len(sample)
 
     # Concatenate
-    if len(y_unsup_list) > 0:
-        y_unsup = np.concatenate(y_unsup_list, axis=0)
-        A_unsup = np.vstack(A_unsup_rows)
-    else:
-        y_unsup = np.empty((0,), dtype=float)
-        A_unsup = np.empty((0, L), dtype=float)
-        
-    if len(y_sup_list) > 0:
-        y_sup = np.concatenate(y_sup_list, axis=0)
-        A_sup = np.vstack(A_sup_rows)
-        s_sup = np.concatenate(s_sup_list, axis=0)
-    else:
-        y_sup = np.empty((0,), dtype=float)
-        A_sup = np.empty((0, L), dtype=float)
-        s_sup = np.empty((0,), dtype=float)
+    y = np.concatenate(y_list, axis=0)
+    A = np.vstack(A_rows)
+
+    # Since this is the first pass, initialize array of ones for w
+    w = np.ones_like(y)
 
     # Stan indexes from 1
-    start_idx_unsup = [int(a+1) for (a,b) in start_stop_unsup]
-    stop_idx_unsup  = [int(b+1) for (a,b) in start_stop_unsup]
-    start_idx_sup   = [int(a+1) for (a,b) in start_stop_sup]
-    stop_idx_sup    = [int(b+1) for (a,b) in start_stop_sup]
+    start_idx = [int(a+1) for (a,b) in start_stop]
+    stop_idx  = [int(b+1) for (a,b) in start_stop]
 
     # Build dictionary
     data_dict = {
-        'L':               int(L),
+        'L':         int(L),
+        'N':         int(len(y)),
+        'y':         y.tolist(),
+        'A':         A.tolist(),
+        'M':         int(len(start_idx)),
+        'w':         w,
+
+        'start_idx': start_idx,
+        'stop_idx':  stop_idx,
         
-        'N_unsup':         int(len(y_unsup)),
-        'y_unsup':         y_unsup.tolist(),
-        'A_unsup':         A_unsup.tolist(),
-        'M_unsup':         int(len(start_idx_unsup)),
-        'start_idx_unsup': start_idx_unsup,
-        'stop_idx_unsup':  stop_idx_unsup,
-        
-        'N_sup':           int(len(y_sup)),
-        'y_sup':           y_sup.tolist(),
-        'A_sup':           A_sup.tolist(),
-        's_sup':           s_sup.tolist(),
-        
-        'M_sup':           int(len(start_idx_sup)),
-        'start_idx_sup':   start_idx_sup,
-        'stop_idx_sup':    stop_idx_sup,
-        
-        'sigma':           sigma,
+        'sigma':     sigma,
     }
 
     if save_data:
         with open(
-            f"{DATA_SAVE_PATH}_{pointing}.json",
+            data_save_path,
             "w"
         ) as f:
             json.dump(data_dict, f, indent=2)
 
     return data_dict
-
-
-if __name__ == "__main__":
-    
-    t0 = time.time()
-
-    if len(sys.argv) != 2:
-        print("Usage: python run_stan.py <pointing>")
-        sys.exit(1)
-
-    pointing = str(sys.argv[1])
-
-    data_dict = create_data_dict(pointing=pointing, L=8, sigma=0.33, save_data=True)
-    model = CmdStanModel(stan_file=STAN_FILE)
-
-    # fit the model
-    fit = model.sample(
-        data=data_dict,
-        chains=4, parallel_chains=4,
-        adapt_delta=0.995,
-        max_treedepth=15,
-        show_console=True,
-        output_dir="/users/jmduchar/data/jmduchar/Research/mcgill25/rfi_characterization/stan/stan_out/"
-    )
-    
-    print("Time elapsed:", time_elapsed(t0, time.time()))

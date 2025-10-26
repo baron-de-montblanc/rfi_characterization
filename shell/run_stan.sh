@@ -3,7 +3,7 @@
 #SBATCH -J run_stan
 #SBATCH -c 8
 #SBATCH --mem=128G
-#SBATCH --time=24:00:00
+#SBATCH --time=72:00:00
 #SBATCH --account=jpober-condo
 
 # Use '%A' for array-job ID, '%J' for job ID and '%a' for task ID

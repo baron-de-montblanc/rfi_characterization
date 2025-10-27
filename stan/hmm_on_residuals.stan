@@ -1,4 +1,4 @@
-// 4-state semi-supervised HMM
+// 4-state semi-supervised HMM for residuals
 // States: 1=clean, 2=rising, 3=decay, 4=blip
 
 functions {
@@ -20,12 +20,12 @@ functions {
 
 data {
     // Unsupervised sequence
-    int<lower=1> N_unsup;      // length of sequence
-    vector[N_unsup] y_unsup;   // observations
+    int<lower=1> N_unsup;      // length of unsupervised sequence
+    vector[N_unsup] z_unsup;   // unsupervised residuals
 
     // Supervised (fully labeled) sequence
     int<lower=1> N_sup;        // length of sequence (supervised)
-    vector[N_sup] y_sup;       // observations (supervised)
+    vector[N_sup] z_sup;       // supervised residuals
     array[N_sup] int<lower=1, upper=4> s_sup; // 1=clean,2=rising,3=decay,4=blip
 
     real<lower=0> sigma;
@@ -42,13 +42,13 @@ parameters {
     real<lower=0, upper=1> rate_decay;
 
     // Blip emission params
-    real<lower=0> mu_blip;                 // location of spike
+    real<lower=0> mu_blip;        // location param
     real<lower=0> log_k_blip;     // tau_blip = sigma * exp(log_k_blip)
 }
 
 
 transformed parameters{
-    // real sigma = exp(log_sigma);
+
     real tau_blip = sigma*exp(log_k_blip);
 
     // Transition log-matrix Tlog[from, to]
@@ -108,7 +108,7 @@ model {
 
     // t = 1 (no initial state prior; equal up to constant)
     for (s in 1:4)
-    gamma[1][s] = emit_logprob(s, y_unsup[1], 0, sigma, rate_rising, rate_decay, mu_blip, tau_blip);
+    gamma[1][s] = emit_logprob(s, z_unsup[1], 0, sigma, rate_rising, rate_decay, mu_blip, tau_blip);
 
     for (t in 2:N_unsup) {
         for (s in 1:4) {
@@ -116,7 +116,7 @@ model {
           for (sp in 1:4)
             acc[sp] = gamma[t-1][sp] + Tlog[sp, s];
           gamma[t][s] = log_sum_exp(acc)
-                      + emit_logprob(s, y_unsup[t], y_unsup[t-1], sigma, rate_rising, rate_decay, mu_blip, tau_blip);
+                      + emit_logprob(s, z_unsup[t], z_unsup[t-1], sigma, rate_rising, rate_decay, mu_blip, tau_blip);
         }
     }
 
@@ -125,7 +125,7 @@ model {
 
     // ---------- Supervised: labeled path ----------
     // t = 1
-    target += emit_logprob(s_sup[1], y_sup[1], 0, sigma, rate_rising, rate_decay, mu_blip, tau_blip);
+    target += emit_logprob(s_sup[1], z_sup[1], 0, sigma, rate_rising, rate_decay, mu_blip, tau_blip);
 
     for (t in 2:N_sup) {
         // check for impossible transition
@@ -134,41 +134,50 @@ model {
                  " from ", s_sup[t-1], " to ", s_sup[t]);
     
         target += Tlog[s_sup[t-1], s_sup[t]]
-                + emit_logprob(s_sup[t], y_sup[t], y_sup[t-1],
+                + emit_logprob(s_sup[t], z_sup[t], z_sup[t-1],
                           sigma, rate_rising, rate_decay, mu_blip, tau_blip);
     }
 }
 
 
 generated quantities {
-  vector[N_unsup] post_clean;
+  // ---------- FORWARD–BACKWARD + VITERBI (UNSUP) ----------
+  vector[N_sup + N_unsup] post_clean;
+  array[N_unsup] int<lower=1, upper=4> viterbi;
+  real log_p_state;
 
   {
-    // Precompute emission log-probs for all t,s
+    // supervised marginals from labels
+    for (t in 1:N_sup)
+      post_clean[t] = (s_sup[t] == 1) ? 1 : 0;
+
+    // ---- emissions (unsup) using residual-based emission ----
     array[N_unsup] vector[4] emit;
+    // t = 1 (z_tm1 = 0)
     for (s in 1:4)
-      emit[1][s] = emit_logprob(s, y_unsup[1], 0, sigma,
-                                rate_rising, rate_decay, mu_blip, tau_blip);
+      emit[1][s] = emit_logprob(s, z_unsup[1], 0, sigma,
+                                      rate_rising, rate_decay, mu_blip, tau_blip);
+    // t = 2..N_unsup
     for (t in 2:N_unsup)
       for (s in 1:4)
-        emit[t][s] = emit_logprob(s, y_unsup[t], y_unsup[t-1], sigma,
-                                  rate_rising, rate_decay, mu_blip, tau_blip);
+        emit[t][s] = emit_logprob(s, z_unsup[t], z_unsup[t - 1], sigma,
+                                        rate_rising, rate_decay, mu_blip, tau_blip);
 
-    // Forward messages (alpha)
+    // ---- forward (alpha) ----
     array[N_unsup] vector[4] alpha;
     alpha[1] = emit[1];
     for (t in 2:N_unsup) {
       vector[4] tmp;
       for (s in 1:4) {
         vector[4] acc;
-        for (sp in 1:4) acc[sp] = alpha[t-1][sp] + Tlog[sp, s];
+        for (sp in 1:4) acc[sp] = alpha[t - 1][sp] + Tlog[sp, s];
         tmp[s] = log_sum_exp(acc) + emit[t][s];
       }
       alpha[t] = tmp;
     }
     real logZ = log_sum_exp(alpha[N_unsup]);
 
-    // Backward messages (beta)
+    // ---- backward (beta) ----
     array[N_unsup] vector[4] beta;
     for (s in 1:4) beta[N_unsup][s] = 0;
     for (tt in 1:(N_unsup - 1)) {
@@ -181,11 +190,44 @@ generated quantities {
       }
     }
 
-    // Posterior marginals for Clean: w_t = P(s_t = Clean | data, params)
+    // ---- unsup marginals ----
     for (t in 1:N_unsup) {
       vector[4] log_post = alpha[t] + beta[t] - logZ;
       vector[4] post = softmax(log_post);
-      post_clean[t] = post[1];
+      post_clean[N_sup + t] = post[1]; // Clean = state 1
+    }
+
+    // ---- Viterbi on UNSUP (residual-domain) ----
+    array[N_unsup, 4] int back_ptr;
+    array[N_unsup] vector[4] best_logp;
+
+    // init
+    best_logp[1] = emit[1];
+    for (s in 1:4) back_ptr[1, s] = 1;
+
+    // DP
+    for (t in 2:N_unsup) {
+      for (k in 1:4) {
+        real b = negative_infinity();
+        int arg = 1;
+        for (j in 1:4) {
+          real cand = best_logp[t - 1][j] + Tlog[j, k];
+          if (cand > b) { b = cand; arg = j; }
+        }
+        best_logp[t][k] = b + emit[t][k];
+        back_ptr[t, k] = arg;
+      }
+    }
+
+    // backtrack
+    int max_state = 1;
+    log_p_state = best_logp[N_unsup, 1];
+    for (k in 2:4)
+      if (best_logp[N_unsup, k] > log_p_state) { max_state = k; log_p_state = best_logp[N_unsup, k]; }
+    viterbi[N_unsup] = max_state;
+    for (t in 1:(N_unsup - 1)) {
+      int tt = N_unsup - t;
+      viterbi[tt] = back_ptr[tt + 1, viterbi[tt + 1]];
     }
   }
 }

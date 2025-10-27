@@ -1,6 +1,7 @@
 // Fit Legendre coefficients to clean state
 
 functions {
+  // TODO: test this! (compare to scipy)
   real generalized_normal_lpdf(real x, real mu, real alpha, real beta) {
     return log(beta) - log(2) - log(alpha) - lgamma(1.0 / beta)
          - pow(abs((x - mu) / alpha), beta);

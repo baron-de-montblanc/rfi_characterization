@@ -186,11 +186,11 @@ def create_data_dict_bg(pointing, L, sigma=0.33, save_data=False, data_save_path
 
     # Initialize priors for Legendre coeffs (first pass)
     mu_mu_X     = np.zeros(L, dtype=float)
-    tau_mu_X    = np.full(L, 2.5, dtype=float)
+    tau_mu_X    = np.ones(L, dtype=float)
     loc_alpha_X   = np.zeros(L, dtype=float)
     scale_alpha_X = np.ones(L, dtype=float)
-    loc_beta_X   = float(np.log(2.0))
-    scale_beta_X = 0.35
+    loc_beta_X   = 0
+    scale_beta_X = 1
 
     # Build dictionary
     data_dict = {

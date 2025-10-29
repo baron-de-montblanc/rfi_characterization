@@ -2,6 +2,7 @@
 // States: 1=clean, 2=rising, 3=decay, 4=blip
 
 functions {
+  // TODO: test this (compare with scipy)
   real generalized_normal_lpdf(real x, real mu, real alpha, real beta) {
     return log(beta) - log(2) - log(alpha) - lgamma(1.0 / beta)
          - pow(abs((x - mu) / alpha), beta);
@@ -49,6 +50,19 @@ data {
   real<lower=0> sigma;
 }
 
+
+transformed data {
+  array[N_unsup] int<lower=0, upper=1> is_start_unsup;
+  array[N_sup]   int<lower=0, upper=1> is_start_sup;
+
+  for (t in 1:N_unsup) is_start_unsup[t] = 0;
+  for (t in 1:N_sup)   is_start_sup[t]   = 0;
+
+  for (m in 1:M_unsup) is_start_unsup[start_idx_unsup[m]] = 1;
+  for (m in 1:M_sup)   is_start_sup[start_idx_sup[m]]     = 1;
+}
+
+
 parameters {
   // transition
   simplex[3] theta_clean;    // clean -> {clean, rising, blip}
@@ -62,7 +76,7 @@ parameters {
 
   // Blip emission
   real               mu_blip;          // location
-  real<lower=0>      log_k_blip;       // tau_blip = sigma * exp(log_k_blip)
+  real               k_blip;           // damping tau_blip = sigma * k_blip
 
   // Legendre priors
   vector[L]             mu_X;                // prior means per mode
@@ -94,7 +108,7 @@ transformed parameters {
     mu_sup[a:b] = block(A_sup, a, 1, b - a + 1, L) * X_sup[m];
   }
 
-  real tau_blip = sigma*exp(log_k_blip);
+  real tau_blip = fmin( sigma * k_blip, 1e12 );
 
   // Transition log-matrix Tlog[from, to]
   matrix[4,4] Tlog;
@@ -102,23 +116,23 @@ transformed parameters {
     real neginf = negative_infinity();
     for (i in 1:4) for (j in 1:4) Tlog[i, j] = neginf;
 
-    // clean -> {clean, rising, blip}
+    // clean -> {clean(1), rising(2), blip(4)}
     Tlog[1,1] = log(theta_clean[1]);
     Tlog[1,2] = log(theta_clean[2]);
-    Tlog[1,4] = log(theta_clean[3]);
+    Tlog[1,4] = log(theta_clean[3]);   // 3 entries only; j=3 (decay) forbidden
 
-    // rising -> {rising, decay, blip}
+    // rising -> {rising(2), decay(3), blip(4)}
     Tlog[2,2] = log(theta_rising[1]);
     Tlog[2,3] = log(theta_rising[2]);
-    Tlog[2,4] = log(theta_rising[3]);
+    Tlog[2,4] = log(theta_rising[3]);  // j=1 (clean) forbidden
 
-    // decay -> {clean, rising, decay, blip}
+    // decay -> all four
     Tlog[3,1] = log(theta_decay[1]);
     Tlog[3,2] = log(theta_decay[2]);
     Tlog[3,3] = log(theta_decay[3]);
     Tlog[3,4] = log(theta_decay[4]);
 
-    // blip -> {clean, rising, decay, blip}
+    // blip -> all four
     Tlog[4,1] = log(theta_blip[1]);
     Tlog[4,2] = log(theta_blip[2]);
     Tlog[4,3] = log(theta_blip[3]);
@@ -128,10 +142,10 @@ transformed parameters {
 
 model {
   // ---------- Priors ----------
-  rate_decay   ~ beta(2, 2);
-  rate_rising  ~ normal(2 - rate_decay, 0.05);    // TODO: maybe we don't want to center it like that?
-  mu_blip      ~ normal(0, 5 * sigma);
-  log_k_blip   ~ normal(0, 1);
+  rate_rising ~ normal(1.12, 0.5);
+  rate_decay  ~ normal(0.81, 0.5);
+  mu_blip     ~ normal(4, 10);
+  k_blip  ~ lognormal(2.9, 10);
 
   theta_clean  ~ dirichlet(to_vector({9.0, 1.0, 0.2}));
   theta_rising ~ dirichlet(to_vector({8.0, 2.0, 0.2}));
@@ -139,8 +153,8 @@ model {
   theta_blip   ~ dirichlet(to_vector({8.0, 0.5, 0.5, 0.1}));
 
   // ---------- Legendre hyperparam priors  ----------
-  mu_X    ~ normal(0, 2.5);
-  alpha_X ~ lognormal(0, 1);
+  mu_X    ~ normal(-1, 3);
+  alpha_X ~ lognormal(log(70), 100);
   beta_X  ~ lognormal(log(2), 0.35);
 
   // Per-night Legendre priors
@@ -158,97 +172,49 @@ model {
   if (N_sup   > 0) z_sup   = y_sup   - mu_sup;
 
   // ---------- Unsupervised ----------
-  array[N_unsup] vector[4] gamma; // joint log-likelihood up to time t
-
-  // t = 1 (use z_tm1 = 0)
-  for (s in 1:4)
-    gamma[1][s] = emit_logprob_resid(s, z_unsup[1], 0,
-                                     sigma,
-                                     rate_rising, rate_decay,
-                                     mu_blip, tau_blip);
-
-  for (t in 2:N_unsup) {
-    for (s in 1:4) {
-      vector[4] acc;
-      for (sp in 1:4)
-        acc[sp] = gamma[t-1][sp] + Tlog[sp, s];
-      gamma[t][s] = log_sum_exp(acc)
-                  + emit_logprob_resid(s, z_unsup[t], z_unsup[t-1],
+  if (N_unsup > 0) {
+    array[N_unsup] vector[4] gamma; // joint log-likelihood up to time t
+  
+    // t = 1
+    for (s in 1:4)
+      gamma[1][s] = emit_logprob_resid(s, z_unsup[1], 0,
                                        sigma,
                                        rate_rising, rate_decay,
                                        mu_blip, tau_blip);
+
+    for (t in 2:N_unsup) {
+      real z_tm1_eff = (is_start_unsup[t] == 1 ? 0 : z_unsup[t-1]);
+      for (s in 1:4) {
+        vector[4] acc;
+        for (sp in 1:4)
+          acc[sp] = gamma[t-1][sp] + Tlog[sp, s];
+        gamma[t][s] = log_sum_exp(acc)
+                    + emit_logprob_resid(s, z_unsup[t], z_tm1_eff,
+                                         sigma,
+                                         rate_rising, rate_decay,
+                                         mu_blip, tau_blip);
+      }
     }
+  
+    // Marginal likelihood
+    target += log_sum_exp(gamma[N_unsup]);
   }
 
-  // Marginal likelihood
-  target += log_sum_exp(gamma[N_unsup]);
-
   // ---------- Supervised ----------
-  // t = 1
-  target += emit_logprob_resid(s_sup[1], z_sup[1], 0,
-                               sigma,
-                               rate_rising, rate_decay,
-                               mu_blip, tau_blip);
-
-  for (t in 2:N_sup) {
-    if (Tlog[s_sup[t-1], s_sup[t]] == negative_infinity())
-      reject("Impossible labeled transition at t=", t,
-             " from ", s_sup[t-1], " to ", s_sup[t]);
-
-    target += Tlog[s_sup[t-1], s_sup[t]]
-            + emit_logprob_resid(s_sup[t], z_sup[t], z_sup[t-1],
+  if (N_sup > 0) {
+    // t = 1
+    target += emit_logprob_resid(s_sup[1], z_sup[1], 0,
                                  sigma,
                                  rate_rising, rate_decay,
                                  mu_blip, tau_blip);
-  }
-}
-
-generated quantities {
-  // Viterbi decode on UNSUPERVISED sequence (residual-domain)
-  array[N_unsup] int<lower=1, upper=4> viterbi;
-  real log_p_state;
-
-  {
-    array[N_unsup, 4] int back_ptr;
-    array[N_unsup, 4] real best_logp;
-
-    // Need the same residuals/sigmas as in transformed params
-    vector[N_unsup] muU = mu_unsup;
-    vector[N_unsup] zU  = y_unsup - muU;
-
-    // t = 1
-    for (s in 1:4) {
-      best_logp[1, s] = emit_logprob_resid(s, zU[1], 0, sigma,
-                                           rate_rising, rate_decay,
-                                           mu_blip, tau_blip);
-      back_ptr[1, s] = 1;
-    }
-
-    for (t in 2:N_unsup) {
-      for (k in 1:4) {
-        real b = negative_infinity();
-        int arg = 1;
-        for (j in 1:4) {
-          real cand = best_logp[t - 1, j] + Tlog[j, k];
-          if (cand > b) { b = cand; arg = j; }
-        }
-        best_logp[t, k] = b + emit_logprob_resid(k, zU[t], zU[t - 1], sigma,
-                                                 rate_rising, rate_decay,
-                                                 mu_blip, tau_blip);
-        back_ptr[t, k] = arg;
-      }
-    }
-
-    // Terminate + backtrack
-    int max_state = 1;
-    log_p_state = best_logp[N_unsup, 1];
-    for (k in 2:4)
-      if (best_logp[N_unsup, k] > log_p_state) { max_state = k; log_p_state = best_logp[N_unsup, k]; }
-    viterbi[N_unsup] = max_state;
-
-    for (t in 1:(N_unsup - 1)) {
-      int tt = N_unsup - t;
-      viterbi[tt] = back_ptr[tt + 1, viterbi[tt + 1]];
+  
+    for (t in 2:N_sup) {
+      real z_tm1_eff = (is_start_sup[t] == 1 ? 0 : z_sup[t-1]);
+      target += Tlog[s_sup[t-1], s_sup[t]]
+              + emit_logprob_resid(s_sup[t], z_sup[t], z_tm1_eff,
+                                   sigma,
+                                   rate_rising, rate_decay,
+                                   mu_blip, tau_blip);
     }
   }
 }

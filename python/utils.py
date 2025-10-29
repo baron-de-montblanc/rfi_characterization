@@ -90,6 +90,7 @@ def get_ref_obsids(
 
 def plot_supervised_inputs(
         data_dict, 
+        pointing,
         save_path=None,
     ):
     
@@ -209,7 +210,7 @@ def transition_corner_plot(
     )
 
     if save_path is not None:
-        plt.savefig(os.path.join(save_path, f"transition_corner.png"), dpi=300, bbox_inches='tight')
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
 
     plt.show()
 
@@ -246,9 +247,57 @@ def emission_corner_plot(
     )
 
     if save_path is not None:
-        plt.savefig(os.path.join(save_path, f"emission_corner.png"), dpi=300, bbox_inches='tight')
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
 
     plt.show()
+
+def legendre_corner_plot(
+        fit,
+        save_path=None,
+    ):
+    params = np.column_stack([
+        fit.stan_variable("mu_X"),
+        fit.stan_variable("alpha_X"),
+        fit.stan_variable("beta_X"),
+    ])
+
+    labels = [
+        r"$\mu_{X} L_1$",
+        r"$\mu_{X} L_2$",
+        r"$\mu_{X} L_3$",
+        r"$\mu_{X} L_4$",
+        r"$\mu_{X} L_5$",
+        r"$\mu_{X} L_6$",
+        r"$\mu_{X} L_7$",
+        r"$\mu_{X} L_8$",
+        r"$\alpha_{X} L_1$",
+        r"$\alpha_{X} L_2$",
+        r"$\alpha_{X} L_3$",
+        r"$\alpha_{X} L_4$",
+        r"$\alpha_{X} L_5$",
+        r"$\alpha_{X} L_6$",
+        r"$\alpha_{X} L_7$",
+        r"$\alpha_{X} L_8$",
+        r"$\beta_{X}$",
+    ]
+
+    # Make corner plot
+    fig = corner.corner(
+        params,
+        labels=labels,
+        quantiles=[0.16, 0.5, 0.84],
+        show_titles=True,
+        title_fmt=".2f",
+        title_kwargs={"fontsize": 10},
+        bins=40
+    )
+
+    if save_path is not None:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+
+    plt.show()
+
+
 
 
 def robust_range(arr, lo=0.5, hi=99.5, pad=0.05):
@@ -282,16 +331,6 @@ def plot_prediction_hist(
         fit,
         save_path=None,
     ):
-
-    data = np.asarray(data_dict['y_unsup'])
-    viterbi = fit.stan_variable('viterbi')
-    predictions = mode(viterbi).mode
-
-    clean_mask = predictions == 1
-    rising_mask = predictions == 2
-    decay_mask = predictions == 3
-    blip_mask = predictions == 4
-
     sigma = 0.33
     rate_rising = float(np.mean(fit.stan_variable("rate_rising")))
     rate_decay  = float(np.mean(fit.stan_variable("rate_decay")))

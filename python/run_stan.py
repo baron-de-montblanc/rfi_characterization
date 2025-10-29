@@ -62,7 +62,7 @@ def obs_pointing_key(path):
     return (obs, p)
 
 
-def create_data_dict(pointing, L, sigma=0.33, save_data=True):
+def create_data_dict(pointing, L, sigma=0.33, save_data=False, save_data_path=None, median_subtract=False):
 
     all_p = [i for i in ALL_FILES if pointing in i and "bad" not in i]
     all_annotations = [i for i in ALL_ANNOTATIONS if pointing in i and "bad" not in i]
@@ -81,10 +81,13 @@ def create_data_dict(pointing, L, sigma=0.33, save_data=True):
     for pdx, (obs,p) in enumerate(all_night_pointing):
         
         sample = np.load(all_p[pdx])
-        
+    
         # Remove NAN
         nan_mask = np.isnan(sample)
         sample = sample[~nan_mask]
+
+        if median_subtract:
+            sample = sample - np.median(sample)
         
         A = build_legendre_design_matrix(sample, L) 
         
@@ -161,7 +164,7 @@ def create_data_dict(pointing, L, sigma=0.33, save_data=True):
 
     if save_data:
         with open(
-            f"{DATA_SAVE_PATH}_{pointing}.json",
+            save_data_path,
             "w"
         ) as f:
             json.dump(data_dict, f, indent=2)

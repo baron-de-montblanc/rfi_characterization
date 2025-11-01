@@ -14,7 +14,6 @@ plt.style.use('seaborn-v0_8')
 
 ABS_DIR = '/users/jmduchar/data/jmduchar/Research/mcgill25/rfi_characterization/'
 STAN_FILE = ABS_DIR+'stan/legendre.stan'
-DATA_SAVE_PATH = ABS_DIR+"/data/json/legendre_semisupervised"
 
 DATAPATH = ABS_DIR+"data_private/raw_data/"
 ANNOTATIONPATH = ABS_DIR+"data_private/annotations/"
@@ -62,10 +61,31 @@ def obs_pointing_key(path):
     return (obs, p)
 
 
-def create_data_dict(pointing, L, sigma=0.33, save_data=False, save_data_path=None, median_subtract=False):
+def create_data_dict(
+        pointing,
+        L, 
+        prior_path,
+        save_data           = False, 
+        save_data_path      = None, 
+        median_subtract     = False,
+        data_fraction       = 1,
+        annotation_fraction = 1,
+    ):
 
-    all_p = [i for i in ALL_FILES if pointing in i and "bad" not in i]
-    all_annotations = [i for i in ALL_ANNOTATIONS if pointing in i and "bad" not in i]
+    all_p = sorted([i for i in ALL_FILES if pointing in i and "bad" not in i])
+    all_annotations = sorted([i for i in ALL_ANNOTATIONS if pointing in i and "bad" not in i])
+
+    total_num_files = len(all_p)
+    cur_data_frac = 1
+    while cur_data_frac > data_fraction:
+        all_p.pop()
+        all_annotations.pop()
+        cur_data_frac = len(all_p)/total_num_files
+
+    cur_fraction = len(all_annotations)/len(all_p)
+    while cur_fraction > annotation_fraction:
+        all_annotations.pop()
+        cur_fraction = len(all_annotations)/len(all_p)
 
     all_night_pointing = [obs_pointing_key(i) for i in all_p]
     ann_night_pointing = set(obs_pointing_key(i) for i in all_annotations)
@@ -139,7 +159,7 @@ def create_data_dict(pointing, L, sigma=0.33, save_data=False, save_data_path=No
     start_idx_sup   = [int(a+1) for (a,b) in start_stop_sup]
     stop_idx_sup    = [int(b+1) for (a,b) in start_stop_sup]
 
-    # Build dictionary
+    # Build data dictionary
     data_dict = {
         'L':               int(L),
         
@@ -158,9 +178,16 @@ def create_data_dict(pointing, L, sigma=0.33, save_data=False, save_data_path=No
         'M_sup':           int(len(start_idx_sup)),
         'start_idx_sup':   start_idx_sup,
         'stop_idx_sup':    stop_idx_sup,
-        
-        'sigma':           sigma,
     }
+
+    # Load in priors and update
+    with open(
+        prior_path,
+        "r"
+    ) as f:
+        prior_dict = json.load(f)
+
+    data_dict.update(prior_dict)
 
     if save_data:
         with open(

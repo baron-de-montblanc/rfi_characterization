@@ -25,6 +25,7 @@ functions {
 }
 
 data {
+
   int<lower=1> L; // number of Legendre modes used
 
   // ----------------------- Unsupervised sequence -----------------------
@@ -46,8 +47,39 @@ data {
   array[M_sup] int<lower=1> start_idx_sup;
   array[M_sup] int<lower=1> stop_idx_sup;
 
-  // Manually define sigma TODO: let the model guess?
-  real<lower=0> sigma;
+  // ------------ Priors carried over from previous runs ------------
+
+  // emission
+  vector<lower=0>[3] alpha_clean;   // for {clean, rising, blip}
+  vector<lower=0>[3] alpha_rising;  // for {rising, decay, blip}
+  vector<lower=0>[4] alpha_decay;   // for {clean, rising, decay, blip}
+  vector<lower=0>[4] alpha_blip;    // for {clean, rising, decay, blip}
+
+  // rising
+  real rr_log_mu;
+  real<lower=0> rr_log_sigma;
+
+  // decaying
+  real<lower=0> rd_alpha;
+  real<lower=0> rd_beta;
+
+  // noise variance
+  real sig_log_mu;
+  real<lower=0> sig_log_sigma;
+
+  // blip
+  real mu_blip_mean;
+  real<lower=0> mu_blip_sd;
+  real k_blip_log_mu;
+  real<lower=0> k_blip_log_sigma;
+
+  // legendre
+  vector[L] mu_X_mean;
+  vector<lower=0>[L] mu_X_sd;
+  vector[L] alpha_X_log_mu;
+  vector<lower=0>[L] alpha_X_log_sigma;
+  real beta_X_log_mu;
+  real<lower=0> beta_X_log_sigma;
 }
 
 
@@ -70,6 +102,9 @@ parameters {
   simplex[4] theta_decay;    // decay  -> {clean, rising, decay, blip}
   simplex[4] theta_blip;     // blip   -> {clean, rising, decay, blip}
 
+  // State-independent noise variance
+  real<lower=0> sigma;
+
   // Dynamics
   real<lower=1> rate_rising;
   real<lower=0, upper=1> rate_decay;
@@ -78,7 +113,7 @@ parameters {
   real               mu_blip;          // location
   real               k_blip;           // damping tau_blip = sigma * k_blip
 
-  // Legendre priors
+  // Legendre parameters
   vector[L]             mu_X;                // prior means per mode
   vector<lower=0>[L]    alpha_X;             // prior scales per mode
   real<lower=0>         beta_X;              // shared shape (>0); beta=2 => normal, beta=1 => Laplace
@@ -142,20 +177,21 @@ transformed parameters {
 
 model {
   // ---------- Priors ----------
-  rate_rising ~ normal(1.12, 0.5);
-  rate_decay  ~ normal(0.81, 0.5);
-  mu_blip     ~ normal(4, 10);
-  k_blip  ~ lognormal(2.9, 10);
+  rate_rising ~ lognormal(rr_log_mu, rr_log_sigma);
+  rate_decay  ~ beta(rd_alpha, rd_beta);
+  sigma    ~ lognormal(sig_log_mu, sig_log_sigma);
+  mu_blip  ~ normal(mu_blip_mean, mu_blip_sd);
+  k_blip   ~ lognormal(k_blip_log_mu, k_blip_log_sigma);
 
-  theta_clean  ~ dirichlet(to_vector({9.0, 1.0, 0.2}));
-  theta_rising ~ dirichlet(to_vector({8.0, 2.0, 0.2}));
-  theta_decay  ~ dirichlet(to_vector({5.0, 0.5, 4.5, 0.2}));
-  theta_blip   ~ dirichlet(to_vector({8.0, 0.5, 0.5, 0.1}));
+  theta_clean  ~ dirichlet(alpha_clean);
+  theta_rising ~ dirichlet(alpha_rising);
+  theta_decay  ~ dirichlet(alpha_decay);
+  theta_blip   ~ dirichlet(alpha_blip);
 
   // ---------- Legendre hyperparam priors  ----------
-  mu_X    ~ normal(-1, 3);
-  alpha_X ~ lognormal(log(70), 100);
-  beta_X  ~ lognormal(log(2), 0.35);
+  mu_X    ~ normal(mu_X_mean, mu_X_sd);
+  for (l in 1:L) alpha_X[l] ~ lognormal(alpha_X_log_mu[l], alpha_X_log_sigma[l]);
+  beta_X ~ lognormal(beta_X_log_mu, beta_X_log_sigma);
 
   // Per-night Legendre priors
   for (m in 1:M_unsup)

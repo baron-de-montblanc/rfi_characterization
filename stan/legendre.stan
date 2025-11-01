@@ -2,6 +2,7 @@
 // States: 1=clean, 2=rising, 3=decay, 4=blip
 
 functions {
+
   // TODO: test this (compare with scipy)
   real generalized_normal_lpdf(real x, real mu, real alpha, real beta) {
     return log(beta) - log(2) - log(alpha) - lgamma(1.0 / beta)
@@ -78,8 +79,6 @@ data {
   vector<lower=0>[L] mu_X_sd;
   vector[L] alpha_X_log_mu;
   vector<lower=0>[L] alpha_X_log_sigma;
-  real beta_X_log_mu;
-  real<lower=0> beta_X_log_sigma;
 }
 
 
@@ -116,7 +115,6 @@ parameters {
   // Legendre parameters
   vector[L]             mu_X;                // prior means per mode
   vector<lower=0>[L]    alpha_X;             // prior scales per mode
-  real<lower=0>         beta_X;              // shared shape (>0); beta=2 => normal, beta=1 => Laplace
 
   // Legendre coefficients
   array[M_unsup] vector[L] X_unsup;
@@ -189,17 +187,14 @@ model {
   theta_blip   ~ dirichlet(alpha_blip);
 
   // ---------- Legendre hyperparam priors  ----------
-  mu_X    ~ normal(mu_X_mean, mu_X_sd);
+  for (l in 1:L) mu_X[l] ~ normal(mu_X_mean[l], mu_X_sd[l]);
   for (l in 1:L) alpha_X[l] ~ lognormal(alpha_X_log_mu[l], alpha_X_log_sigma[l]);
-  beta_X ~ lognormal(beta_X_log_mu, beta_X_log_sigma);
 
   // Per-night Legendre priors
   for (m in 1:M_unsup)
-    for (l in 1:L)
-      target += generalized_normal_lpdf(X_unsup[m, l] | mu_X[l], alpha_X[l], beta_X);
+    X_unsup[m] ~ normal(mu_X, alpha_X);
   for (m in 1:M_sup)
-    for (l in 1:L)
-      target += generalized_normal_lpdf(X_sup[m, l] | mu_X[l], alpha_X[l], beta_X);
+    X_sup[m] ~ normal(mu_X, alpha_X);
 
   // ---------- Residuals ----------
   vector[N_unsup] z_unsup;

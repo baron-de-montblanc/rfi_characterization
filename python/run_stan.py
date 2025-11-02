@@ -70,6 +70,7 @@ def create_data_dict(
         median_subtract     = False,
         data_fraction       = 1,
         annotation_fraction = 1,
+        grainsize           = 1,  # for parallelization
     ):
 
     all_p = sorted([i for i in ALL_FILES if pointing in i and "bad" not in i])
@@ -178,6 +179,8 @@ def create_data_dict(
         'M_sup':           int(len(start_idx_sup)),
         'start_idx_sup':   start_idx_sup,
         'stop_idx_sup':    stop_idx_sup,
+
+        'grainsize':       grainsize,
     }
 
     # Load in priors and update

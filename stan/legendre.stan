@@ -145,7 +145,7 @@ data {
   array[M_sup] int<lower=1> start_idx_sup;
   array[M_sup] int<lower=1> stop_idx_sup;
 
-  // ------------ Priors carried over from previous runs ------------
+  // ------------ Priors ------------
 
   // emission
   vector<lower=0>[3] alpha_clean;   // for {clean, rising, blip}

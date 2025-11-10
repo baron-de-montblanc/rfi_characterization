@@ -200,7 +200,7 @@ parameters {
 
   // Blip emission
   real               mu_blip;          // location
-  real               k_blip;           // damping tau_blip = sigma * k_blip
+  real               k_blip;           // tau_blip = sigma * k_blip
 
   // Legendre parameters
   vector[L]            mu_X;     // prior means per mode
@@ -249,20 +249,20 @@ transformed parameters {
 model {
   // ---------- Priors ----------
 
-  // dynamics
+  // emission
   rate_rising ~ lognormal(rr_log_mu, rr_log_sigma);
   rate_decay  ~ beta(rd_alpha, rd_beta);
   sigma    ~ lognormal(sig_log_mu, sig_log_sigma);  // noise variance
   mu_blip  ~ normal(mu_blip_mean, mu_blip_sd);
   k_blip   ~ lognormal(k_blip_log_mu, k_blip_log_sigma);
 
-  // emission
+  // transition
   theta_clean  ~ dirichlet(alpha_clean);
   theta_rising ~ dirichlet(alpha_rising);
   theta_decay  ~ dirichlet(alpha_decay);
   theta_blip   ~ dirichlet(alpha_blip);
 
-  // legendre
+  // legendre gen norm params
   for (l in 1:L) mu_X[l] ~ normal(mu_X_mean[l], mu_X_sd[l]);
   for (l in 1:L) alpha_X[l] ~ lognormal(alpha_X_log_mu[l], alpha_X_log_sigma[l]);
   beta_X  ~ lognormal(beta_X_log_mu, beta_X_log_sigma);
@@ -345,8 +345,5 @@ generated quantities {
       int tt = b - t;
       viterbi[tt] = back_ptr[tt - a + 2, viterbi[tt + 1]];
     }
-
-    // optional: track best night logp (kept as example)
-    if (m == 1 || night_logp > log_p_state) log_p_state = night_logp;
   }
 }

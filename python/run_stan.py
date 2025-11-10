@@ -1,13 +1,8 @@
-import sys
-import time
 import numpy as np
 from numpy.polynomial.legendre import legvander
-import matplotlib.pyplot as plt
-from cmdstanpy import CmdStanModel
 import json
 import glob
 
-plt.style.use('seaborn-v0_8')
 
 # ------------------------ Global Variables ------------------------
 
@@ -61,10 +56,46 @@ def obs_pointing_key(path):
     return (obs, p)
 
 
+def get_priors(L):
+
+    prior_dict = dict(
+        # --- transition priors ---
+        alpha_clean       = [10.0, 1.0, 1.0],        # clean -> {clean, rising, blip}
+        alpha_rising      = [10.0, 5.0, 1.0],        # rising -> {rising, decay, blip}
+        alpha_decay       = [5.0, 1.0, 10.0, 1.0],   # decay  -> {clean, rising, decay, blip}
+        alpha_blip        = [10.0, 1.0, 1.0, 1.0],   # blip   -> {clean, rising, decay, blip}
+
+        # --- dynamic parameters ---
+        rr_log_mu         = 0.0,        # lognormal mean for rate_rising (exp(0)=1)
+        rr_log_sigma      = 1.0,        # wide
+        rd_alpha          = 2.0,        # beta(2,2) near-uniform
+        rd_beta           = 2.0,
+
+        # --- noise variance ---
+        sig_log_mu        = 0.0,        # mean of log(sigma)
+        sig_log_sigma     = 2.0,        # covers sigma ~ [0.05, 50]
+
+        # --- blip emission ---
+        mu_blip_mean      = 0.0,        # centered
+        mu_blip_sd        = 10.0,       # very wide
+        k_blip_log_mu     = 0.0,        # lognormal mean for k_blip
+        k_blip_log_sigma  = 2.0,        # broad spread
+
+        # --- legendre hyperparameters (lenient, scale-invariant) ---
+        mu_X_mean         = [0.0] * L,              # zero-centered
+        mu_X_sd           = [5.0] * L,              # wide (allows large coeffs)
+        alpha_X_log_mu    = [0.0] * L,              # lognormal mean
+        alpha_X_log_sigma = [1.0] * L,              # wide dispersion
+        beta_X_log_mu    = float(np.log(2.0)),   # median(beta_X) = 2
+        beta_X_log_sigma = 1.0
+    )
+
+    return prior_dict
+
+
 def create_data_dict(
         pointing,
-        L, 
-        prior_path,
+        L,
         save_data           = False, 
         save_data_path      = None, 
         median_subtract     = False,
@@ -183,13 +214,8 @@ def create_data_dict(
         'grainsize':       grainsize,
     }
 
-    # Load in priors and update
-    with open(
-        prior_path,
-        "r"
-    ) as f:
-        prior_dict = json.load(f)
-
+    # Add priors
+    prior_dict = get_priors(L)
     data_dict.update(prior_dict)
 
     if save_data:
@@ -201,28 +227,3 @@ def create_data_dict(
 
     return data_dict
 
-
-if __name__ == "__main__":
-    
-    t0 = time.time()
-
-    if len(sys.argv) != 2:
-        print("Usage: python run_stan.py <pointing>")
-        sys.exit(1)
-
-    pointing = str(sys.argv[1])
-
-    data_dict = create_data_dict(pointing=pointing, L=8, sigma=0.33, save_data=True)
-    model = CmdStanModel(stan_file=STAN_FILE)
-
-    # fit the model
-    fit = model.sample(
-        data=data_dict,
-        chains=4, parallel_chains=4,
-        adapt_delta=0.995,
-        max_treedepth=15,
-        show_console=True,
-        output_dir="/users/jmduchar/data/jmduchar/Research/mcgill25/rfi_characterization/stan/stan_out/"
-    )
-    
-    print("Time elapsed:", time_elapsed(t0, time.time()))

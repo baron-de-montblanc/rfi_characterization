@@ -38,10 +38,10 @@ functions {
     // log prob
     real lp = 0;
     for (m in start:end) {
-      int local = m - start + 1;                // index inside X_unsup_slice
-      int a = a_idx[m];
-      int b = b_idx[m];
-      int Tm = b - a + 1;
+      int local = m - start + 1;  // convert global start index to local index inside X_unsup_slice
+      int a = a_idx[m];           // start index of slice
+      int b = b_idx[m];           // end index of slice
+      int Tm = b - a + 1;         // length of slice
 
       // residuals
       vector[Tm] mu = block(A_unsup, a, 1, Tm, cols(A_unsup)) * X_unsup_slice[local];
@@ -55,10 +55,14 @@ functions {
       // forward pass
       {
         array[Tm] vector[4] gamma;
+
+        // t = 1
         for (s in 1:4)
         gamma[1][s] = emit_logprob_resid(s, z[1], 0,
                               sigma, rate_rising, rate_decay,
                               mu_blip, tau_blip);
+
+        // t > 1
         for (t in 2:Tm) {
           real z_tm1 = z[t-1];
           for (s in 1:4) {
@@ -105,9 +109,12 @@ functions {
         lp += generalized_normal_lpdf(X_sup_slice[local][l] | mu_X[l], alpha_X[l], beta_X);
 
       // forward pass
+      // t = 1
       lp += emit_logprob_resid(s_sup[a], z[1], 0,
                 sigma, rate_rising, rate_decay,
                 mu_blip, tau_blip);
+
+      // t > 1
       for (t in 2:Tm) {
         int st_prev = s_sup[a + t - 2];
         int st_cur  = s_sup[a + t - 1];
@@ -180,7 +187,7 @@ data {
   real<lower=0> beta_X_log_sigma;
 
   // -----------------------  Parallelization ----------------------- 
-  int<lower=1> grainsize;   // for reduce_sum chunk size
+  int<lower=1> grainsize;   // for reduce_sum chunk size; better to leave as 1
 }
 
 

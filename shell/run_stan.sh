@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH -J run_stan
-#SBATCH -c 8
+#SBATCH -c 128
 #SBATCH --mem=128G
 #SBATCH --time=24:00:00
 #SBATCH --account=jpober-condo
@@ -13,4 +13,4 @@
 source /gpfs/runtime/opt/anaconda/2022.05/etc/profile.d/conda.sh
 conda activate stan
 
-python /users/jmduchar/data/jmduchar/Research/mcgill25/rfi_characterization/python/run_stan.py p0
+python /users/jmduchar/data/jmduchar/Research/mcgill25/rfi_characterization/python/run_stan.py p0 16

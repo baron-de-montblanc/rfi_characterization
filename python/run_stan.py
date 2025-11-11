@@ -2,6 +2,10 @@ import numpy as np
 from numpy.polynomial.legendre import legvander
 import json
 import glob
+import time
+from cmdstanpy import CmdStanModel
+import argparse
+import os
 
 
 # ------------------------ Global Variables ------------------------
@@ -227,3 +231,64 @@ def create_data_dict(
 
     return data_dict
 
+
+def parse_args():
+    cpu = os.cpu_count() or 4
+    default_threads = max(1, cpu // 4)
+
+    print("Default threads:", default_threads)
+
+    p = argparse.ArgumentParser(
+        description="Run Stan HMM with Legendre background, with convenient defaults.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    p.add_argument("pointing", help="Pointing ID, e.g. p0")
+    p.add_argument("L", type=int, help="Legendre order (L)")
+    p.add_argument("--threads-per-chain", type=int, default=default_threads,
+                   help="Threads per MCMC chain")
+    p.add_argument("--chains", type=int, default=4, help="Number of chains")
+    p.add_argument("--parallel-chains", type=int, default=4,
+                   help="Number of chains to run in parallel")
+    p.add_argument("--adapt-delta", type=float, default=0.95,
+                   help="Target acceptance rate")
+    p.add_argument("--max-treedepth", type=int, default=15,
+                   help="Max treedepth for NUTS")
+    p.add_argument("--annotation-fraction", type=float, default=0.0,
+                   help="Fraction of annotations for supervised modes")
+    return p.parse_args()
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    t0 = time.time()
+
+    pointing = str(args.pointing)
+    L = int(args.L)
+    ann_frac = float(args.annotation_fraction)
+    sup = {0: "unsupervised", 1: "supervised"}.get(ann_frac, "semisupervised")
+        
+    DATA_DICT_PATH  = ABS_DIR+f"data/json/legendre_{sup}_{pointing}_L{L}.json"
+    data_dict = create_data_dict(
+        pointing,
+        L,
+        save_data           = True,
+        save_data_path      = DATA_DICT_PATH,
+        median_subtract     = False,
+        data_fraction       = 1,
+        annotation_fraction = ann_frac,
+    )
+
+    model = CmdStanModel(stan_file=STAN_FILE, cpp_options={"STAN_THREADS": "true"})
+
+    fit = model.sample(
+        data              = data_dict,
+        chains            = args.chains,
+        parallel_chains   = args.parallel_chains,
+        threads_per_chain = args.threads_per_chain,
+        adapt_delta       = args.adapt_delta,
+        max_treedepth     = args.max_treedepth,
+        show_console      = True,
+        output_dir        = ABS_DIR+f"stan/stan_out/legendre_{sup}_{pointing}_L{L}",
+    )
+
+    print(f"\nTime elapsed: {time.time() - t0:.1f}s")

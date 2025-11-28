@@ -60,7 +60,7 @@ def obs_pointing_key(path):
     return (obs, p)
 
 
-def get_priors(L):
+def get_priors(L, median_subtract=False):
 
     prior_dict = dict(
         # --- transition priors ---
@@ -91,8 +91,13 @@ def get_priors(L):
         alpha_X_log_mu    = [0.0] * L,              # lognormal mean
         alpha_X_log_sigma = [1.0] * L,              # wide dispersion
         beta_X_log_mu    = float(np.log(2.0)),   # median(beta_X) = 2
-        beta_X_log_sigma = 1.0
+        beta_X_log_sigma = 1.0,
     )
+    
+    if not median_subtract:
+        # The zeroth (constant offset) term is way higher than 0! --> encode that
+        prior_dict["mu_X_mean"][0] = 750.0
+        prior_dict["mu_X_sd"][0]   = 100.0
 
     return prior_dict
 
@@ -219,7 +224,7 @@ def create_data_dict(
     }
 
     # Add priors
-    prior_dict = get_priors(L)
+    prior_dict = get_priors(L, median_subtract=median_subtract)
     data_dict.update(prior_dict)
 
     if save_data:
@@ -235,8 +240,6 @@ def create_data_dict(
 def parse_args():
     cpu = os.cpu_count() or 4
     default_threads = max(1, cpu // 4)
-
-    print("Default threads:", default_threads)
 
     p = argparse.ArgumentParser(
         description="Run Stan HMM with Legendre background, with convenient defaults.",
@@ -266,6 +269,8 @@ if __name__ == "__main__":
     L = int(args.L)
     ann_frac = float(args.annotation_fraction)
     sup = {0: "unsupervised", 1: "supervised"}.get(ann_frac, "semisupervised")
+    
+    print("Default threads:", args.threads_per_chain)
         
     DATA_DICT_PATH  = ABS_DIR+f"data/json/legendre_{sup}_{pointing}_L{L}.json"
     data_dict = create_data_dict(
@@ -273,7 +278,7 @@ if __name__ == "__main__":
         L,
         save_data           = True,
         save_data_path      = DATA_DICT_PATH,
-        median_subtract     = False,
+        median_subtract     = True,
         data_fraction       = 1,
         annotation_fraction = ann_frac,
     )

@@ -276,20 +276,20 @@ model {
 
   // ---------- Parallelized forward pass over nights ----------
   {
-
+    
+    if (N_sup > 0) {
+      target += reduce_sum(partial_sum_sup, X_sup, grainsize,
+      y_sup, A_sup,
+      start_idx_sup, stop_idx_sup, s_sup,
+      sigma, rate_rising, rate_decay,
+      mu_blip, tau_blip, Tlog,
+      mu_X, alpha_X, beta_X);
+    }
+    
     if (N_unsup > 0) {
       target += reduce_sum(partial_sum_unsup, X_unsup, grainsize,
                             y_unsup, A_unsup,
                             start_idx_unsup, stop_idx_unsup,
-                            sigma, rate_rising, rate_decay,
-                            mu_blip, tau_blip, Tlog,
-                            mu_X, alpha_X, beta_X);
-    }
-
-    if (N_sup > 0) {
-      target += reduce_sum(partial_sum_sup, X_sup, grainsize,
-                            y_sup, A_sup,
-                            start_idx_sup, stop_idx_sup, s_sup,
                             sigma, rate_rising, rate_decay,
                             mu_blip, tau_blip, Tlog,
                             mu_X, alpha_X, beta_X);

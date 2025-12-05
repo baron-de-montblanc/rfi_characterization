@@ -45,8 +45,10 @@ def legendre_design_numpy(u, L):
     return A_full.astype(np.float64, copy=False)
 
 
-def build_legendre_design_matrix(y, L=8):
+def build_legendre_design_matrix(y, L):
+    finite_mask = np.isfinite(y)
     u = np.arange(len(y), dtype=np.float64)
+    u = u[finite_mask]  # make time array gappy
     A = legendre_design_numpy(u, L)
     return A
 
@@ -142,15 +144,14 @@ def create_data_dict(
     for pdx, (obs,p) in enumerate(all_night_pointing):
         
         sample = np.load(all_p[pdx])
-    
+        A = build_legendre_design_matrix(sample, L) 
+
         # Remove NAN
         nan_mask = np.isnan(sample)
         sample = sample[~nan_mask]
 
         if median_subtract:
             sample = sample - np.median(sample)
-        
-        A = build_legendre_design_matrix(sample, L) 
         
         if (obs,p) not in ann_night_pointing:  # UNSUP NIGHT
             y_unsup_list.append(sample.astype(float))

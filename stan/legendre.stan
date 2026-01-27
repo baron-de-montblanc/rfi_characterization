@@ -26,14 +26,19 @@ functions {
 
   // UNSUPERVISED parallelization
   real partial_sum_unsup(array[] vector X_unsup_slice,
-      int start, int end,
-      vector y_unsup,
-      matrix A_unsup,
-      array[] int a_idx, array[] int b_idx,
-      real sigma, real rate_rising, real rate_decay,
-      real mu_blip, real tau_blip,
-      matrix Tlog,
-      vector mu_X, vector alpha_X, real beta_X) {
+    int start, int end,
+    vector y_unsup,
+    matrix A_unsup,
+    array[] int a_idx, array[] int b_idx,
+    array[] int night_id_unsup,
+    vector nightly_temp,
+    real intercept, real slope,
+    real scale, real shape,
+    real sigma, real rate_rising, real rate_decay,
+    real mu_blip, real tau_blip,
+    vector pi,
+    matrix Tlog,
+    vector mu_X, vector alpha_X, real beta_X) {
 
     // log prob
     real lp = 0;
@@ -48,8 +53,19 @@ functions {
       vector[Tm] z  = segment(y_unsup, a, Tm) - mu;
 
       // legendre priors
-      for (l in 1:rows(mu_X))
-        lp += generalized_normal_lpdf(X_unsup_slice[local][l] | mu_X[l], alpha_X[l], beta_X);
+      {
+        int nid = night_id_unsup[m];  // which night are we looking at?
+        real mu0 = intercept + slope * nightly_temp[nid];
+
+        // mode 1: temperature‑driven offset
+        lp += generalized_normal_lpdf(
+          X_unsup_slice[local][1] | mu0, scale, shape
+        );
+
+        // higher modes
+        for (l in 2:rows(mu_X))
+          lp += generalized_normal_lpdf(X_unsup_slice[local][l] | mu_X[l], alpha_X[l], beta_X);
+      }
 
 
       // forward pass
@@ -58,7 +74,7 @@ functions {
 
         // t = 1
         for (s in 1:4)
-        gamma[1][s] = emit_logprob_resid(s, z[1], 0,
+        gamma[1][s] = log(pi[s]) + emit_logprob_resid(s, z[1], 0,
                               sigma, rate_rising, rate_decay,
                               mu_blip, tau_blip);
 
@@ -87,8 +103,13 @@ functions {
     matrix A_sup,
     array[] int a_idx, array[] int b_idx,
     array[] int s_sup,
+    array[] int night_id_sup,
+    vector nightly_temp,
+    real intercept, real slope,
+    real scale, real shape,
     real sigma, real rate_rising, real rate_decay,
     real mu_blip, real tau_blip,
+    vector pi,
     matrix Tlog,
     vector mu_X, vector alpha_X, real beta_X) {
 
@@ -105,12 +126,22 @@ functions {
       vector[Tm] z  = segment(y_sup, a, Tm) - mu;
 
       // legendre priors
-      for (l in 1:rows(mu_X))
-        lp += generalized_normal_lpdf(X_sup_slice[local][l] | mu_X[l], alpha_X[l], beta_X);
+      {
+        int nid = night_id_sup[m];  // which night are we looking at?
+        real mu0 = intercept + slope * nightly_temp[nid];
 
+        // mode 1: temperature‑driven offset
+        lp += generalized_normal_lpdf(
+          X_sup_slice[local][1] | mu0, scale, shape
+        );
+
+        // higher modes
+        for (l in 2:rows(mu_X))
+          lp += generalized_normal_lpdf(X_sup_slice[local][l] | mu_X[l], alpha_X[l], beta_X);
+      }
       // forward pass
       // t = 1
-      lp += emit_logprob_resid(s_sup[a], z[1], 0,
+      lp += log(pi[s_sup[a]]) + emit_logprob_resid(s_sup[a], z[1], 0,
                 sigma, rate_rising, rate_decay,
                 mu_blip, tau_blip);
 
@@ -132,6 +163,7 @@ functions {
 data {
 
   int<lower=1> L; // number of Legendre modes used
+  int<lower=1> M_tot;  // Total number of nights
 
   // ----------------------- Unsupervised sequence -----------------------
   int<lower=0> N_unsup;  // If this is 0, we have a fully supervised model. And vice-versa
@@ -152,7 +184,25 @@ data {
   array[M_sup] int<lower=1> start_idx_sup;
   array[M_sup] int<lower=1> stop_idx_sup;
 
+  // ----------------- Beamforming temp modeling ---------------------
+  vector[M_tot] nightly_temp;
+  vector[M_tot] y_tot_nightly_avg;
+
+  array[M_unsup] int<lower=1, upper=M_tot> night_id_unsup;  // need to tell Stan which temp belongs to which night
+  array[M_sup]   int<lower=1, upper=M_tot> night_id_sup;
+
   // ------------ Priors ------------
+
+  // beamformer temp modeling (priors on slope/intercept of linear fit)
+  real slope_mean;
+  real intercept_mean;
+  real<lower=0> scale_mean;
+  real<lower=0> shape_mean;
+
+  // initial state
+  vector<lower=0>[4] alpha_pi;
+
+  // TODO: penalty for not subtracting the bg?
 
   // emission
   vector<lower=0>[3] alpha_clean;   // for {clean, rising, blip}
@@ -169,8 +219,7 @@ data {
   real<lower=0> rd_beta;
 
   // noise variance
-  real sig_log_mu;
-  real<lower=0> sig_log_sigma;
+  real<lower=0> sigma;
 
   // blip
   real mu_blip_mean;
@@ -198,16 +247,16 @@ parameters {
   simplex[4] theta_decay;    // decay  -> {clean, rising, decay, blip}
   simplex[4] theta_blip;     // blip   -> {clean, rising, decay, blip}
 
-  // State-independent noise variance
-  real<lower=0> sigma;
+  // Initial state
+  simplex[4] pi;
 
   // Dynamics
-  real<lower=1> rate_rising;
-  real<lower=0, upper=1> rate_decay;
+  real<lower=1.02> rate_rising;  // restricted the range to avoid excessive 2/3 predictions
+  real<lower=0, upper=0.98> rate_decay; // and enforce actually subtracting the background...
 
   // Blip emission
-  real               mu_blip;          // location
-  real               k_blip;           // tau_blip = sigma * k_blip
+  real<lower=0>      mu_blip;          // location
+  real<lower=1>      k_blip;           // tau_blip = sigma * k_blip
 
   // Legendre parameters
   vector[L]            mu_X;     // prior means per mode
@@ -217,6 +266,13 @@ parameters {
   // Legendre coefficients
   array[M_unsup] vector[L] X_unsup;
   array[M_sup]   vector[L] X_sup;
+
+  // Beamformer temp modeling
+  real<upper=0> slope;     // slope of ssins vs. temps (expect inverse proportion)
+  real<lower=0> intercept;          // intercept of ssins vs. temps
+  real<lower=0> scale;     // scale (alpha; related to variance) of *residuals* of ssins vs. temps (linear least-squares) for gen-norm
+  real<lower=0> shape;     // shape (beta) for gen-norm of *residuals*
+
 }
 
 transformed parameters {
@@ -259,7 +315,6 @@ model {
   // emission
   rate_rising ~ lognormal(rr_log_mu, rr_log_sigma);
   rate_decay  ~ beta(rd_alpha, rd_beta);
-  sigma    ~ lognormal(sig_log_mu, sig_log_sigma);  // noise variance
   mu_blip  ~ normal(mu_blip_mean, mu_blip_sd);
   k_blip   ~ lognormal(k_blip_log_mu, k_blip_log_sigma);
 
@@ -268,6 +323,15 @@ model {
   theta_rising ~ dirichlet(alpha_rising);
   theta_decay  ~ dirichlet(alpha_decay);
   theta_blip   ~ dirichlet(alpha_blip);
+
+  // initial state
+  pi ~ dirichlet(alpha_pi);
+
+  // prior on first Legendre coeff via beamformer temperature modeling
+  slope ~ normal(slope_mean, 2);
+  intercept ~ normal(intercept_mean, 10);
+  scale ~ normal(scale_mean, 1);
+  shape ~ normal(shape_mean, 0.5);
 
   // legendre gen norm params
   for (l in 1:L) mu_X[l] ~ normal(mu_X_mean[l], mu_X_sd[l]);
@@ -278,21 +342,33 @@ model {
   {
     
     if (N_sup > 0) {
-      target += reduce_sum(partial_sum_sup, X_sup, grainsize,
-      y_sup, A_sup,
-      start_idx_sup, stop_idx_sup, s_sup,
-      sigma, rate_rising, rate_decay,
-      mu_blip, tau_blip, Tlog,
-      mu_X, alpha_X, beta_X);
+      target += reduce_sum(
+        partial_sum_sup, X_sup, grainsize,
+        y_sup, A_sup,
+        start_idx_sup, stop_idx_sup, s_sup,
+        night_id_sup,
+        nightly_temp,
+        intercept, slope,
+        scale, shape,
+        sigma, rate_rising, rate_decay,
+        mu_blip, tau_blip, pi, Tlog,
+        mu_X, alpha_X, beta_X
+      );
     }
     
     if (N_unsup > 0) {
-      target += reduce_sum(partial_sum_unsup, X_unsup, grainsize,
-                            y_unsup, A_unsup,
-                            start_idx_unsup, stop_idx_unsup,
-                            sigma, rate_rising, rate_decay,
-                            mu_blip, tau_blip, Tlog,
-                            mu_X, alpha_X, beta_X);
+      target += reduce_sum(
+        partial_sum_unsup, X_unsup, grainsize,
+        y_unsup, A_unsup,
+        start_idx_unsup, stop_idx_unsup,
+        night_id_unsup,
+        nightly_temp,
+        intercept, slope,
+        scale, shape,
+        sigma, rate_rising, rate_decay,
+        mu_blip, tau_blip, pi, Tlog,
+        mu_X, alpha_X, beta_X
+      );
     }
   }
 }
@@ -321,7 +397,7 @@ generated quantities {
 
     // t = 1
     for (s in 1:4) {
-      best_logp[1, s] = emit_logprob_resid(s, z[1], 0, sigma,
+      best_logp[1, s] = log(pi[s]) + emit_logprob_resid(s, z[1], 0, sigma,
                                            rate_rising, rate_decay,
                                            mu_blip, tau_blip);
       back_ptr[1, s] = 1;

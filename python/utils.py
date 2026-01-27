@@ -223,7 +223,7 @@ def emission_corner_plot(
         fit.stan_variable("rate_rising"),
         fit.stan_variable("rate_decay"),
         fit.stan_variable("mu_blip"),
-    #     fit.stan_variable("sigma"),
+#         fit.stan_variable("sigma"),
         fit.stan_variable("tau_blip"),
     ])
 
@@ -231,7 +231,7 @@ def emission_corner_plot(
         r"$\mathrm{rate}_{rising}$",
         r"$\mathrm{rate}_{decay}$",
         r"$\mu_{blip}$",
-    #     r"$\sigma$",
+#         r"$\sigma$",
         r"$\tau_{blip}$"
     ]
 
@@ -254,43 +254,23 @@ def emission_corner_plot(
 def legendre_corner_plot(
         fit,
         save_path=None,
+        supervision_level="unsup",
+        night=0,
     ):
-    params = np.column_stack([
-        fit.stan_variable("mu_X"),
-        fit.stan_variable("alpha_X"),
-        fit.stan_variable("beta_X"),
-    ])
-
-    labels = [
-        r"$\mu_{X} L_1$",
-        r"$\mu_{X} L_2$",
-        r"$\mu_{X} L_3$",
-        r"$\mu_{X} L_4$",
-        r"$\mu_{X} L_5$",
-        r"$\mu_{X} L_6$",
-        r"$\mu_{X} L_7$",
-        r"$\mu_{X} L_8$",
-        r"$\alpha_{X} L_1$",
-        r"$\alpha_{X} L_2$",
-        r"$\alpha_{X} L_3$",
-        r"$\alpha_{X} L_4$",
-        r"$\alpha_{X} L_5$",
-        r"$\alpha_{X} L_6$",
-        r"$\alpha_{X} L_7$",
-        r"$\alpha_{X} L_8$",
-        r"$\beta_{X}$",
-    ]
+    params = fit.stan_variable(f"X_{supervision_level}")[:,night,:]
 
     # Make corner plot
     fig = corner.corner(
         params,
-        labels=labels,
+        # labels=labels,
         quantiles=[0.16, 0.5, 0.84],
         show_titles=True,
         title_fmt=".2f",
         title_kwargs={"fontsize": 10},
         bins=40
     )
+
+    fig.suptitle(f"Legendre basis coefficients for night {night}", fontsize=16)
 
     if save_path is not None:
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
@@ -326,21 +306,54 @@ def overlay(ax, samples, pdf, title, label, bins='fd'):
     ax.legend(loc="upper right", frameon=False)
 
 
+def get_residuals(
+        data_dict,
+        fit,
+        sup_level='unsup',
+    ):
+
+    X = fit.stan_variables()[f"X_{sup_level}"]
+    A = np.asarray(data_dict[f"A_{sup_level}"])
+    y = np.asarray(data_dict[f"y_{sup_level}"])
+
+    start = np.asarray(data_dict[f"start_idx_{sup_level}"]) - 1  # 0-based indexing
+    stop  = np.asarray(data_dict[f"stop_idx_{sup_level}"])       # Python slice is exclusive
+
+    draws, M_sup, L = X.shape
+    N_sup = len(y)
+
+    mu_draws = np.zeros((draws, N_sup))
+
+    for m in range(M_sup):
+        a, b = start[m], stop[m]
+        mu_draws[:, a:b] = X[:, m, :] @ A[a:b, :].T
+
+    bg = mu_draws.mean(axis=0)  # (N_sup,)
+    res = y - bg
+
+    return res
+
+
 def plot_prediction_hist(
         data_dict,
         fit,
         save_path=None,
+        sup_level="unsup",
+        sigma=0.3,
     ):
-    sigma = 0.33
     rate_rising = float(np.mean(fit.stan_variable("rate_rising")))
     rate_decay  = float(np.mean(fit.stan_variable("rate_decay")))
     mu_blip     = float(np.mean(fit.stan_variable("mu_blip")))
     tau_blip    = float(np.mean(fit.stan_variable("tau_blip")))
 
     # ---- data & states ----
-    y = np.asarray(data_dict['y_unsup'])
-    viterbi = fit.stan_variable('viterbi')
-    pred = mode(viterbi).mode
+    res = get_residuals(data_dict, fit, sup_level)
+
+    if sup_level == "unsup":
+        viterbi = fit.stan_variable('viterbi')
+        pred = mode(viterbi).mode
+    else:
+        pred = np.asarray(data_dict['s_sup'])
 
     clean_mask = pred == 1
     rising_mask = pred == 2
@@ -348,24 +361,24 @@ def plot_prediction_hist(
     blip_mask   = pred == 4
 
     # shift y by one to get y_{t-1}
-    y_tm1 = np.roll(y, 1)      # rolls right, so y_tm1[t] = y[t-1]
-    y_tm1[0] = np.nan          # first element has no predecessor
+    res_tm1 = np.roll(res, 1)      # rolls right, so y_tm1[t] = y[t-1]
+    res_tm1[0] = np.nan          # first element has no predecessor
 
     # residuals only where states are rising/decay
-    r_resid = y[rising_mask] - rate_rising * y_tm1[rising_mask]
-    d_resid = y[decay_mask]  - rate_decay  * y_tm1[decay_mask]
+    r_resid = res[rising_mask] - rate_rising * res_tm1[rising_mask]
+    d_resid = res[decay_mask]  - rate_decay  * res_tm1[decay_mask]
     r_resid = r_resid[~np.isnan(r_resid)]
     d_resid = d_resid[~np.isnan(d_resid)]
 
-    clean_y = y[clean_mask]
-    blip_y  = y[blip_mask]
+    clean_res = res[clean_mask]
+    blip_res  = res[blip_mask]
 
     fig, axs = plt.subplots(2, 2, figsize=(10, 6))
     axs = axs.ravel()
 
     # Clean: y_t ~ N(0, sigma)
     overlay(
-        axs[0], clean_y,
+        axs[0], clean_res,
         lambda x: norm.pdf(x, loc=0.0, scale=sigma),
         "Clean",
         fr"Model N(0, $\sigma$ = {sigma:.2f})"
@@ -389,7 +402,7 @@ def plot_prediction_hist(
 
     # Blip: y_t ~ Student-t(ν=3, μ, τ)
     overlay(
-        axs[3], blip_y,
+        axs[3], blip_res,
         lambda x: t.pdf(x, df=3, loc=mu_blip, scale=tau_blip),
         "Blip",
         fr"t($\nu$ = 3, $\mu$ = {mu_blip:.2f}, $\tau$ = {tau_blip:.2f})"
@@ -397,91 +410,7 @@ def plot_prediction_hist(
 
     plt.tight_layout()
     if save_path is not None:
-        plt.savefig(os.path.join(save_path, f"label_hist_overlay.png"), dpi=300, bbox_inches='tight')
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
 
     plt.show()
 
-
-def build_idata(
-    data_dict,
-    fit
-):
-
-    # Convert to arrays (ArviZ prefers numpy arrays)
-    y_unsup = np.asarray(data_dict["y_unsup"], dtype=float)          # shape (N_unsup,)
-    A_unsup = np.asarray(data_dict["A_unsup"], dtype=float)          # shape (N_unsup, L)
-    y_sup   = np.asarray(data_dict["y_sup"], dtype=float)            # shape (N_sup,)
-    A_sup   = np.asarray(data_dict["A_sup"], dtype=float)            # shape (N_sup, L)
-    s_sup   = np.asarray(data_dict["s_sup"], dtype=int)              # shape (N_sup,)
-
-    L       = int(data_dict["L"])
-    N_unsup = int(data_dict["N_unsup"])
-    N_sup   = int(data_dict["N_sup"])
-    sigma   = float(data_dict["sigma"])
-
-    # If present in JSON:
-    mu_X    = np.asarray(data_dict["mu_X"], dtype=float)             # shape (L,)
-    alpha_X = np.asarray(data_dict["alpha_X"], dtype=float)          # shape (L,)
-    beta_X  = np.asarray(data_dict["beta_X"], dtype=float)           # shape (L,)
-
-    # ---- Nice labels for dimensions ----
-    state_names = ["clean", "rising", "decay", "blip"]
-
-    coords = {
-        "t_unsup": np.arange(N_unsup),
-        "t_sup":   np.arange(N_sup),
-        "ell":     np.arange(L),
-        "to_clean":  ["clean", "rising", "blip"],   # theta_clean has 3 outcomes
-        "to_rising": ["rising", "decay", "blip"],   # theta_rising has 3 outcomes
-        "to_decay":  state_names,                   # 4 outcomes
-        "to_blip":   state_names,                   # 4 outcomes
-        "state":     state_names,
-    }
-
-    # Map dims to both posterior vars (from Stan) and the observed/constant data you pass in
-    dims = {
-        # observed data
-        "y_unsup": ["t_unsup"],
-        "y_sup":   ["t_sup"],
-        "s_sup":   ["t_sup"],
-        # constants (if you include them)
-        "A_unsup": ["t_unsup", "ell"],
-        "A_sup":   ["t_sup", "ell"],
-        "mu_X":    ["ell"],
-        "alpha_X": ["ell"],
-        "beta_X":  ["ell"],
-        # common posterior variables from your Stan model
-        "X":             ["ell"],
-        "viterbi":       ["t_unsup"],
-        "theta_clean":   ["to_clean"],
-        "theta_rising":  ["to_rising"],
-        "theta_decay":   ["to_decay"],
-        "theta_blip":    ["to_blip"],
-    }
-
-    # ---- Build InferenceData ----
-    idata = az.from_cmdstanpy(
-        posterior=fit,
-        observed_data={
-            "y_unsup": y_unsup,
-            "y_sup":   y_sup,
-            "s_sup":   s_sup,
-        },
-        constant_data={
-            "A_unsup": A_unsup,
-            "A_sup":   A_sup,
-            "L":       L,
-            "N_unsup": N_unsup,
-            "N_sup":   N_sup,
-            "sigma":   sigma,
-            "mu_X":    mu_X,
-            "alpha_X": alpha_X,
-            "beta_X":  beta_X,
-        },
-        coords=coords,
-        dims=dims,
-        # If you saved warmup and want it loaded too:
-        # save_warmup=True,
-    )
-
-    return idata

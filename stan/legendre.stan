@@ -19,8 +19,11 @@ functions {
       return normal_lpdf(z_t | rate_rising * z_tm1, sigma_t);
     } else if (s == 3) {   // decaying
       return normal_lpdf(z_t | rate_decay  * z_tm1, sigma_t);
-    } else {               // blip
-      return student_t_lpdf(z_t | 3, mu_blip, tau_blip);  // df fixed at 3
+    } else {               // blip -- use truncated student-t
+      if (z_t < 0)
+        return negative_infinity();
+      // normalize
+      return student_t_lpdf(z_t | 3, mu_blip, tau_blip) - student_t_lccdf(0 | 3, mu_blip, tau_blip); // df fixed at 3
     }
   }
 
@@ -40,8 +43,8 @@ functions {
     matrix Tlog,
     vector mu_X, vector alpha_X, real beta_X) {
 
-    // log prob
     real lp = 0;
+
     for (m in start:end) {
       int local = m - start + 1;  // convert global start index to local index inside X_unsup_slice
       int a = a_idx[m];           // start index of slice
@@ -74,7 +77,7 @@ functions {
 
         // t = 1
         for (s in 1:4)
-        gamma[1][s] = log(pi[s]) + emit_logprob_resid(s, z[1], 0,
+          gamma[1][s] = log(pi[s]) + emit_logprob_resid(s, z[1], 0,
                               sigma, rate_rising, rate_decay,
                               mu_blip, tau_blip);
 
@@ -88,8 +91,8 @@ functions {
               + emit_logprob_resid(s, z[t], z_tm1,
                                     sigma, rate_rising, rate_decay,
                                     mu_blip, tau_blip);
-            }
           }
+        }
         lp += log_sum_exp(gamma[Tm]);
       }
     }
@@ -113,8 +116,8 @@ functions {
     matrix Tlog,
     vector mu_X, vector alpha_X, real beta_X) {
 
-    // log prob
     real lp = 0;
+
     for (m in start:end) {
       int local = m - start + 1;
       int a = a_idx[m];
@@ -145,15 +148,14 @@ functions {
                 sigma, rate_rising, rate_decay,
                 mu_blip, tau_blip);
 
-      // t > 1
       for (t in 2:Tm) {
         int st_prev = s_sup[a + t - 2];
         int st_cur  = s_sup[a + t - 1];
         real z_tm1  = z[t-1];
         lp += Tlog[st_prev, st_cur]
-        + emit_logprob_resid(st_cur, z[t], z_tm1,
-                    sigma, rate_rising, rate_decay,
-                    mu_blip, tau_blip);
+            + emit_logprob_resid(st_cur, z[t], z_tm1,
+                  sigma, rate_rising, rate_decay,
+                  mu_blip, tau_blip);
       }
     }
     return lp;
@@ -207,7 +209,7 @@ data {
   // emission
   vector<lower=0>[3] alpha_clean;   // for {clean, rising, blip}
   vector<lower=0>[3] alpha_rising;  // for {rising, decay, blip}
-  vector<lower=0>[4] alpha_decay;   // for {clean, rising, decay, blip}
+  vector<lower=0>[3] alpha_decay;   // for {clean, decay, blip}
   vector<lower=0>[4] alpha_blip;    // for {clean, rising, decay, blip}
 
   // rising
@@ -244,7 +246,7 @@ parameters {
   // transition
   simplex[3] theta_clean;    // clean -> {clean, rising, blip}
   simplex[3] theta_rising;   // rising -> {rising, decay, blip}
-  simplex[4] theta_decay;    // decay  -> {clean, rising, decay, blip}
+  simplex[3] theta_decay;    // decay  -> {clean, rising, blip}
   simplex[4] theta_blip;     // blip   -> {clean, rising, decay, blip}
 
   // Initial state
@@ -255,8 +257,8 @@ parameters {
   real<lower=0, upper=0.98> rate_decay; // and enforce actually subtracting the background...
 
   // Blip emission
-  real<lower=0>      mu_blip;          // location
-  real<lower=1>      k_blip;           // tau_blip = sigma * k_blip
+  real<lower=0>               mu_blip;          // location
+  real<lower=1, upper=100>    k_blip;           // tau_blip = sigma * k_blip
 
   // Legendre parameters
   vector[L]            mu_X;     // prior means per mode
@@ -277,7 +279,7 @@ parameters {
 
 transformed parameters {
 
-  real tau_blip = fmin( sigma * k_blip, 1e12 );
+  real tau_blip = sigma * k_blip;
 
   // Transition log-matrix Tlog[from, to]
   matrix[4,4] Tlog;
@@ -297,9 +299,9 @@ transformed parameters {
 
     // decay -> all four
     Tlog[3,1] = log(theta_decay[1]);
-    Tlog[3,2] = log(theta_decay[2]);
-    Tlog[3,3] = log(theta_decay[3]);
-    Tlog[3,4] = log(theta_decay[4]);
+    // Tlog[3,2] = log(theta_decay[2]); forbidden now
+    Tlog[3,3] = log(theta_decay[2]);
+    Tlog[3,4] = log(theta_decay[3]);
 
     // blip -> all four
     Tlog[4,1] = log(theta_blip[1]);

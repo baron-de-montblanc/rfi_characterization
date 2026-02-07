@@ -68,32 +68,11 @@ def obs_pointing_key(path):
     p = parts[-1].split(".")[0]
     return (obs, p)
 
+
 def dirichlet_mean(alpha):
     a = np.asarray(alpha, dtype=float)
     return (a / a.sum()).tolist()
 
-def ridge_ls_init(A, y, start_idx, stop_idx, L, lam=1e-6):
-    """
-    Per-night ridge least squares init for X:
-      X_m = argmin ||y_m - A_m X||^2 + lam ||X||^2
-    """
-    A = np.asarray(A, dtype=float)
-    y = np.asarray(y, dtype=float)
-
-    start = np.asarray(start_idx, dtype=int) - 1  # Stan->0 indexing
-    stop  = np.asarray(stop_idx, dtype=int) - 1
-
-    M = len(start)
-    X = np.zeros((M, L), dtype=float)
-    identity = np.eye(L)
-
-    for m, (a, b) in enumerate(zip(start, stop)):
-        A_m = A[a:b+1, :]
-        y_m = y[a:b+1]
-        XtX = A_m.T @ A_m + lam * identity
-        X[m, :] = np.linalg.solve(XtX, A_m.T @ y_m)
-
-    return X
 
 # Keep inits strictly inside constraint support (Stan transforms are open intervals)
 EPS = 1e-6
@@ -153,40 +132,30 @@ def make_chain_init_guarded(data_dict, chain_seed=42, jitter_X=0.05):
     # ---------- Per-night Legendre coeffs ----------
     # X_unsup is unconstrained, but we still guard against explosions / NaNs.
     if int(data_dict["M_unsup"]) > 0:
-        X_hat = ridge_ls_init(
-            data_dict["A_unsup"], data_dict["y_unsup"],
-            data_dict["start_idx_unsup"], data_dict["stop_idx_unsup"],
-            L=L, lam=1e-6
-        )
+        X_unsup = np.zeros((data_dict['M_unsup'], data_dict['L']))
+        
+        s0 = data_dict['start_idx_unsup']
+        s1 = data_dict['stop_idx_unsup']
 
-        # Fallback if LS is non-finite or absurdly large
-        if (not np.isfinite(X_hat).all()) or (np.max(np.abs(X_hat)) > 1e12):
-            yavg = np.asarray(data_dict["y_tot_nightly_avg"], dtype=float)
-            M = int(data_dict["M_unsup"])
-            X_hat = np.zeros((M, L), dtype=float)
-            if yavg.size == M and np.isfinite(yavg).all():
-                X_hat[:, 0] = yavg
-            else:
-                X_hat[:, 0] = float(np.nanmean(np.asarray(data_dict["y_unsup"], float)))
+        for sdx, s in enumerate(s0):
+            d = np.asarray(data_dict['y_unsup'])[s:s1[sdx]]
+            X_unsup[sdx,0] = np.mean(d) + rng.normal(scale=10)
 
-        X = X_hat + rng.normal(scale=jitter_X, size=X_hat.shape)
-
-        # Optional: clip to prevent A*X overflow at init
-        y = np.asarray(data_dict["y_unsup"], dtype=float)
-        y_scale = float(np.nanstd(y)) if y.size > 1 else 1.0
-        X_clip = max(1e3, 1e4 * y_scale)
-        X = np.clip(X, -X_clip, X_clip)
-
-        init["X_unsup"] = X.tolist()
+        X_unsup[:,1:] += rng.normal(scale=1, size=X_unsup[:,1:].shape)
+        init['X_unsup'] = X_unsup
 
     if int(data_dict["M_sup"]) > 0:
-        X_hat = ridge_ls_init(
-            data_dict["A_sup"], data_dict["y_sup"],
-            data_dict["start_idx_sup"], data_dict["stop_idx_sup"],
-            L=L, lam=1e-6
-        )
-        X = X_hat + rng.normal(scale=jitter_X, size=X_hat.shape)
-        init["X_sup"] = X.tolist()
+        X_sup = np.zeros((data_dict['M_sup'], data_dict['L']))
+        
+        s0 = data_dict['start_idx_sup']
+        s1 = data_dict['stop_idx_sup']
+
+        for sdx, s in enumerate(s0):
+            d = np.asarray(data_dict['y_sup'])[s:s1[sdx]]
+            X_sup[sdx,0] = np.mean(d)
+
+        X_sup[:,1:] += rng.normal(scale=1, size=X_sup[:,1:].shape)
+        init['X_sup'] = X_sup
 
     # ---------- Legendre hyperparameters ----------
     # mu_X unconstrained; alpha_X > 0; beta_X > 0
@@ -240,9 +209,9 @@ def get_priors(L, median_subtract=False):
     prior_dict = dict(
         # --- transition priors ---
         alpha_clean       = [300.0, 1.0, 0.2],        # clean -> {clean, rising, blip}
-        alpha_rising      = [1.0, 80.0, 0.2],        # rising -> {rising, decay, blip}
-        alpha_decay       = [80.0, 0.5, 1.0, 0.2],   # decay  -> {clean, rising, decay, blip}
-        alpha_blip        = [50.0, 1.0, 1.0, 1.0],   # blip   -> {clean, rising, decay, blip}
+        alpha_rising      = [100.0, 30.0, 0.2],       # rising -> {rising, decay, blip}
+        alpha_decay       = [30.0, 50.0, 0.2],        # decay  -> {clean, decay, blip}
+        alpha_blip        = [100.0, 1.0, 1.0, 1.0],   # blip   -> {clean, rising, decay, blip}
 
         # ---- initial state distribution prior ----
         alpha_pi          = [1000,1,1,1],  # strongly prefer to start night in clean state
@@ -254,18 +223,18 @@ def get_priors(L, median_subtract=False):
         rd_beta           = 2.0,
 
         # --- blip emission ---
-        mu_blip_mean      = 100.0,      # outlier regime
-        mu_blip_sd        = 10.0,       # very wide
+        mu_blip_mean      = 10.0,      # outlier regime
+        mu_blip_sd        = 5.0,       # very wide
         k_blip_log_mu     = 0.0,        # lognormal mean for k_blip
-        k_blip_log_sigma  = 2.0,        # broad spread
+        k_blip_log_sigma  = 0.5,        # broad spread
 
         # --- legendre hyperparameters (lenient, scale-invariant) ---
         mu_X_mean         = [0.0] * L,              # zero-centered
         mu_X_sd           = [5.0] * L,              # wide (allows large coeffs)
         alpha_X_log_mu    = [0.0] * L,              # lognormal mean
-        alpha_X_log_sigma = [1.0] * L,              # wide dispersion
+        alpha_X_log_sigma = [5.0] * L,              # wide dispersion
         beta_X_log_mu    = float(np.log(2.0)),   # median(beta_X) = 2
-        beta_X_log_sigma = 1.0,
+        beta_X_log_sigma = 2.0,
     )
     
     if not median_subtract:

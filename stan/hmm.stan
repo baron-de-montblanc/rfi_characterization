@@ -12,10 +12,7 @@ functions {
   // Emission log-prob for residual z_t (after subtracting background)
   real emit_logprob_resid(int s, real z_t, real z_tm1, real sigma_t, real rate_rising, real rate_decay, real mu_blip, real tau_blip) {
     if (s == 1)      return normal_lpdf(   z_t | 0,                   sigma_t);
-    else if (s == 2) {
-      if (z_tm1 < 0) return negative_infinity();
-      else           return normal_lpdf(   z_t | rate_rising * z_tm1, sigma_t);
-    }
+    else if (s == 2) return normal_lpdf(   z_t | rate_rising * z_tm1, sigma_t);
     else if (s == 3) return normal_lpdf(   z_t | rate_decay  * z_tm1, sigma_t);
     else             return student_t_lpdf(z_t | 3, mu_blip, tau_blip);
   }
@@ -91,7 +88,6 @@ data {
 
     // ----------------- Beamforming temp modeling ---------------------
     vector[M] nightly_temp;
-
     array[M] int<lower=1, upper=M> night_id;  // which temp belongs to which night
 
     // ------------ HARD-CODED SETTINGS ---------------------
@@ -131,7 +127,7 @@ data {
 
 parameters {
 
-  // Initial state
+  // Initial state probability
   simplex[4] rho;
 
   // Legendre parameters

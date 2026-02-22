@@ -92,6 +92,7 @@ data {
 
     // ------------ HARD-CODED SETTINGS ---------------------
     real<upper=0> slope_bf;
+    real          T0;
     real<lower=0> intercept_bf;
     real<lower=0> scale_bf;
     real<lower=0> shape_bf;
@@ -184,7 +185,7 @@ model {
 
   for (m in 1:M) {
     int nid = night_id[m];
-    real mu0 = intercept_bf + slope_bf * nightly_temp[nid];
+    real mu0 = intercept_bf + slope_bf * (nightly_temp[nid] - T0);
 
     target += generalized_normal_lpdf(X[m][1] | mu0, scale_bf, shape_bf);
     for (l in 2:L)

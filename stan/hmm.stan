@@ -91,11 +91,6 @@ data {
     array[M] int<lower=1, upper=M> night_id;  // which temp belongs to which night
 
     // ------------ HARD-CODED SETTINGS ---------------------
-    real<upper=0> slope_bf;
-    real          T0;
-    real<lower=0> intercept_bf;
-    real<lower=0> scale_bf;
-    real<lower=0> shape_bf;
 
     simplex[3] theta_clean;    // clean -> {clean, rising, blip}
     simplex[3] theta_rising;   // rising -> {rising, decay, blip}
@@ -115,8 +110,8 @@ data {
     vector<lower=0>[L-1] loc_X_std;
     vector[L-1]          scale_X_log_mean;
     vector<lower=0>[L-1] scale_X_log_std;
-    real                 shape_X_log_mean;
-    real<lower=0>        shape_X_log_std;
+    // real                 shape_X_log_mean;
+    // real<lower=0>        shape_X_log_std;
 
     // init
     vector<lower=0>[4]   alpha_rho;
@@ -128,13 +123,20 @@ data {
 
 parameters {
 
+  // estimate beamformer vs. ssins relation
+  real<upper=0> slope_bf;
+  real          T0;
+  real<lower=0> intercept_bf;
+  real<lower=0> scale_bf;
+  real<lower=0> shape_bf;
+
   // Initial state probability
   simplex[4] rho;
 
   // Legendre parameters
   vector[L-1]               loc_X;      // prior means per mode
   vector<lower=1e-12>[L-1]  scale_X;    // prior scales per mode
-  real<lower=1e-12>         shape_X;    // shared shape (>0); beta=2 => normal, beta=1 => Laplace 
+  // real<lower=1e-12>         shape_X;    // shared shape (>0); beta=2 => normal, beta=1 => Laplace 
 
   // Legendre coefficients
   array[M] vector[L] X;
@@ -177,9 +179,15 @@ model {
 
   loc_X     ~ normal(   loc_X_mean,       loc_X_std);
   scale_X   ~ lognormal(scale_X_log_mean, scale_X_log_std);
-  shape_X   ~ lognormal(shape_X_log_mean, shape_X_log_std);
+  // shape_X   ~ lognormal(shape_X_log_mean, shape_X_log_std);
 
   rho ~ dirichlet(alpha_rho);
+
+  slope_bf ~ normal(-12, 1);
+  T0 ~ normal(20, 1);
+  intercept_bf ~ normal(767, 10);
+  scale_bf ~ normal(8, 1);
+  shape_bf ~ normal(1.5, 0.25);
 
   // ---------- Priors on Legendre coefficients ----------
 
@@ -189,7 +197,8 @@ model {
 
     target += generalized_normal_lpdf(X[m][1] | mu0, scale_bf, shape_bf);
     for (l in 2:L)
-      target += generalized_normal_lpdf(X[m][l] | loc_X[l-1], scale_X[l-1], shape_X);
+      X[m][l] ~ normal(loc_X[l-1], scale_X[l-1]);
+      // target += generalized_normal_lpdf(X[m][l] | loc_X[l-1], scale_X[l-1], shape_X);
   }
 
   target += reduce_sum(

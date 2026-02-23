@@ -225,8 +225,8 @@ def get_priors(L, median_subtract=False):
         # --- blip emission ---
         mu_blip_mean      = 10.0,      # outlier regime
         mu_blip_sd        = 5.0,       # very wide
-        k_blip_log_mu     = 0.0,        # lognormal mean for k_blip
-        k_blip_log_sigma  = 0.5,        # broad spread
+        k_blip_log_mu     = 0.0,       # lognormal mean for k_blip
+        k_blip_log_sigma  = 0.5,       # broad spread
 
         # --- legendre hyperparameters (lenient, scale-invariant) ---
         mu_X_mean         = [0.0] * L,              # zero-centered
@@ -440,9 +440,13 @@ def create_data_dict_SIM(
         'night_id_sup':      [],
 
         'slope_mean':        -12,
+        'slope_std':         2,
         'intercept_mean':    1000,
+        'intercept_std':     10,
         'scale_mean':        10,
+        'scale_std':         1,
         'shape_mean':        1.5,
+        'shape_std':         0.2,
         
         'N_unsup':           int(len(y_unsup)),
         'y_unsup':           y_unsup.tolist(),

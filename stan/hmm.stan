@@ -10,7 +10,7 @@ functions {
     real v = (z - mu - b) / s2;
 
     if (b <= a)
-      reject("normal_uniform_conv_lpdf: require b > a. a=", a, " b=", b);
+      reject("unifmod_normal_lpdf: require b > a. a=", a, " b=", b);
 
     {
       real diff = erf(u) - erf(v);
@@ -94,6 +94,8 @@ data {
     array[M] int<lower=1> start_idx;  // night start indx in time-series
     array[M] int<lower=1> stop_idx;
 
+    simplex[4] rho;  // initial state probability
+
     // beamformer temp vs. SSINS input data
     vector[M]                      nightly_temp;  // avg. temp per night
     array[M] int<lower=1, upper=M> night_id;      // which temp belongs to which night
@@ -126,7 +128,6 @@ parameters {
   real<lower=1e-12> tau_blip;
 
   // transition parameters
-  simplex[4] rho;            // initial state probability
   simplex[3] theta_clean;    // clean -> {clean, rising, blip}
   simplex[3] theta_rising;   // rising -> {rising, decay, blip}
   simplex[3] theta_decay;    // decay  -> {clean, decay, blip}
@@ -175,7 +176,7 @@ model {
 
   // beamformer temp vs. SSINS
   slope_bf     ~ normal(-12, 1);
-  intercept_bf ~ normal(767, 10);
+  intercept_bf ~ normal(1000, 10);
   scale_bf     ~ normal(8/sqrt(2), 1);
   
   // emission parameters
@@ -185,18 +186,15 @@ model {
   tau_blip     ~ lognormal(0,2);
   
   // transition parameters
-  rho          ~ dirichlet([100,1,1,1]);
-  theta_clean  ~ dirichlet([0.99, 0.005, 0.005]);
-  theta_rising ~ dirichlet([0.97, 0.03, 0.]);
-  theta_decay  ~ dirichlet([0.01, 0.99, 0.]);
-  theta_blip   ~ dirichlet([1., 0., 0., 0.]);
+  theta_clean  ~ dirichlet([990, 5, 5]);
+  theta_rising ~ dirichlet([970, 30, 1]);
+  theta_decay  ~ dirichlet([10, 990, 1]);
+  theta_blip   ~ dirichlet([995, 2, 2, 1]);
 
   // Legendre modeling
   loc_X    ~ normal(loc_X_mean, loc_X_std);
   scale_X  ~ lognormal(scale_X_log_mean, scale_X_log_std);
   
-  // ---------- Priors on Legendre coefficients ----------
-
   for (m in 1:M) {
     int nid = night_id[m];
     real mu0 = intercept_bf + slope_bf * nightly_temp[nid];
@@ -204,6 +202,8 @@ model {
     for (l in 2:L)
       X[m][l] ~ normal(loc_X[l-1], scale_X[l-1]);
   }
+
+  // ---------- Forward pass ----------
 
   target += reduce_sum(
       partial_sum, X, grainsize,

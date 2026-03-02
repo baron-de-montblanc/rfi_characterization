@@ -9,12 +9,27 @@ functions {
          - pow(abs((x - mu) / alpha), beta);
   }
 
+  real unifmod_normal_lpdf(real z, real mu, real sigma, real a, real b) {
+    real s2 = sigma * sqrt(2);
+    real u = (z - mu - a) / s2;
+    real v = (z - mu - b) / s2;
+
+    if (b <= a)
+      reject("normal_uniform_conv_lpdf: require b > a. a=", a, " b=", b);
+
+    {
+      real diff = erf(u) - erf(v);
+      if (diff <= 0) return negative_infinity();
+      return log(diff) - log(2 * (b - a));
+    }
+  }
+
   // Emission log-prob for residual z_t (after subtracting background)
-  real emit_logprob_resid(int s, real z_t, real z_tm1, real sigma_t, real rate_rising, real rate_decay, real mu_blip, real tau_blip) {
-    if (s == 1)      return normal_lpdf(   z_t | 0,                   sigma_t);
-    else if (s == 2) return normal_lpdf(   z_t | rate_rising * z_tm1, sigma_t);
-    else if (s == 3) return normal_lpdf(   z_t | rate_decay  * z_tm1, sigma_t);
-    else             return student_t_lpdf(z_t | 3, mu_blip, tau_blip);
+  real emit_logprob_resid(int s, real z_t, real z_tm1, real sigma_t, real rising_width, real rate_decay, real mu_blip, real tau_blip) {
+    if (s == 1)      return normal_lpdf(        z_t | 0, sigma_t);
+    else if (s == 2) return unifmod_normal_lpdf(z_t | z_tm1, sigma_t, 0, rising_width);
+    else if (s == 3) return normal_lpdf(        z_t | rate_decay * z_tm1, sigma_t);
+    else             return student_t_lpdf(     z_t | 3, mu_blip, tau_blip);
   }
 
   // parallelized forward pass
@@ -23,7 +38,7 @@ functions {
     vector y, matrix A,
     array[] int a_idx, array[] int b_idx,
     real sigma, 
-    real rate_rising, 
+    real rising_width, 
     real rate_decay,
     real mu_blip, 
     real tau_blip, 
@@ -49,7 +64,7 @@ functions {
         // t = 1
         for (s in 1:4)
           gamma[1][s] = log(rho[s]) + emit_logprob_resid(s, z[1], 0,
-                              sigma, rate_rising, rate_decay,
+                              sigma, rising_width, rate_decay,
                               mu_blip, tau_blip);
 
         // t > 1
@@ -60,7 +75,7 @@ functions {
             for (sp in 1:4) acc[sp] = gamma[t-1][sp] + Tlog[sp, s];
             gamma[t][s] = log_sum_exp(acc)
               + emit_logprob_resid(s, z[t], z_tm1,
-                                    sigma, rate_rising, rate_decay,
+                                    sigma, rising_width, rate_decay,
                                     mu_blip, tau_blip);
           }
         }
@@ -72,74 +87,60 @@ functions {
 }
 
 
-
 data {
 
     int<lower=1> L;  // number of Legendre modes used
     int<lower=1> M;  // Total number of nights
     int<lower=1> N;  // Total number of data points (time samples)
 
-    // ----------------------- Input data -----------------------
-    vector[N]    y;
-    matrix[N, L] A;           // rows: t, cols: ell (Legendre basis)
+    vector[N]    y;  // input data (avg. SSINS across DTV7)
+    matrix[N, L] A;  // rows: N, cols: L (Legendre basis)
 
     array[M] int<lower=1> start_idx;  // night start indx in time-series
     array[M] int<lower=1> stop_idx;
 
-    // ----------------- Beamforming temp modeling ---------------------
-    vector[M] nightly_temp;
-    array[M] int<lower=1, upper=M> night_id;  // which temp belongs to which night
+    // beamformer temp vs. SSINS input data
+    vector[M]                      nightly_temp;  // avg. temp per night
+    array[M] int<lower=1, upper=M> night_id;      // which temp belongs to which night
 
-    // ------------ HARD-CODED SETTINGS ---------------------
-
-    simplex[3] theta_clean;    // clean -> {clean, rising, blip}
-    simplex[3] theta_rising;   // rising -> {rising, decay, blip}
-    simplex[3] theta_decay;    // decay  -> {clean, decay, blip}
-    simplex[4] theta_blip;     // blip   -> {clean, rising, decay, blip}
-
-    real<lower=1> rate_rising;
-    real<lower=0, upper=1> rate_decay;
-    real mu_blip;
-    real<lower=0> tau_blip;
+    // thermal noise (known)
     real<lower=0> sigma;
 
-    // ------------ Priors ------------
-
-    // legendre
-    vector[L-1]          loc_X_mean;  // L=1 term determined by beamformer vs. SSINS relation
+    // Legendre parameters
+    vector[L-1]          loc_X_mean;  // L=1 term determined by beamformer temp vs. SSINS relation
     vector<lower=0>[L-1] loc_X_std;
     vector[L-1]          scale_X_log_mean;
     vector<lower=0>[L-1] scale_X_log_std;
-    // real                 shape_X_log_mean;
-    // real<lower=0>        shape_X_log_std;
 
-    // init
-    vector<lower=0>[4]   alpha_rho;
-
-    // -----------------------  Parallelization ----------------------- 
+    // for parallelization
     int<lower=1> grainsize;   // for reduce_sum chunk size; better to leave as 1
 }
 
 
 parameters {
 
-  // estimate beamformer vs. ssins relation
-  real<upper=0> slope_bf;
-  real          T0;
-  real<lower=0> intercept_bf;
-  real<lower=0> scale_bf;
-  real<lower=0> shape_bf;
+  // beamformer temp vs. SSINS
+  real<upper=0>     slope_bf;
+  real<lower=0>     intercept_bf;
+  real<lower=1e-12> scale_bf;
 
-  // Initial state probability
-  simplex[4] rho;
+  // emission parameters
+  real<lower=1e-12>          rising_width;
+  real<lower=1e-12, upper=1> rate_decay;
+  real                       mu_blip;
+  real<lower=1e-12>          tau_blip;
+
+  // transition parameters
+  simplex[4] rho;            // initial state probability
+  simplex[3] theta_clean;    // clean -> {clean, rising, blip}
+  simplex[3] theta_rising;   // rising -> {rising, decay, blip}
+  simplex[3] theta_decay;    // decay  -> {clean, decay, blip}
+  simplex[4] theta_blip;     // blip   -> {clean, rising, decay, blip}
 
   // Legendre parameters
-  vector[L-1]               loc_X;      // prior means per mode
-  vector<lower=1e-12>[L-1]  scale_X;    // prior scales per mode
-  // real<lower=1e-12>         shape_X;    // shared shape (>0); beta=2 => normal, beta=1 => Laplace 
-
-  // Legendre coefficients
-  array[M] vector[L] X;
+  vector[L-1]               loc_X;      // means per mode
+  vector<lower=1e-12>[L-1]  scale_X;    // scales per mode
+  array[M] vector[L]        X;          // Legendre coefficients
 
 }
 
@@ -177,28 +178,36 @@ transformed parameters {
 model {
   // ---------- Priors ----------
 
-  loc_X     ~ normal(   loc_X_mean,       loc_X_std);
-  scale_X   ~ lognormal(scale_X_log_mean, scale_X_log_std);
-  // shape_X   ~ lognormal(shape_X_log_mean, shape_X_log_std);
-
-  rho ~ dirichlet(alpha_rho);
-
-  slope_bf ~ normal(-12, 1);
-  T0 ~ normal(20, 1);
+  // beamformer temp vs. SSINS
+  slope_bf     ~ normal(-12, 1);
   intercept_bf ~ normal(767, 10);
-  scale_bf ~ normal(8, 1);
-  shape_bf ~ normal(1.5, 0.25);
+  scale_bf     ~ normal(8/sqrt(2), 1);
+  
+  // emission parameters
+  rising_width ~ lognormal(-2,2);
+  rate_decay   ~ beta(2,2);
+  mu_blip      ~ normal(5,2.5);
+  tau_blip     ~ lognormal(0,2);
+  
+  // transition parameters
+  rho          ~ dirichlet([100,1,1,1]);
+  theta_clean  ~ dirichlet([0.99, 0.005, 0.005]);
+  theta_rising ~ dirichlet([0.97, 0.03, 0.]);
+  theta_decay  ~ dirichlet([0.01, 0.99, 0.]);
+  theta_blip   ~ dirichlet([1., 0., 0., 0.]);
 
+  // Legendre modeling
+  loc_X    ~ normal(loc_X_mean, loc_X_std);
+  scale_X  ~ lognormal(scale_X_log_mean, scale_X_log_std);
+  
   // ---------- Priors on Legendre coefficients ----------
 
   for (m in 1:M) {
     int nid = night_id[m];
-    real mu0 = intercept_bf + slope_bf * (nightly_temp[nid] - T0);
-
-    target += generalized_normal_lpdf(X[m][1] | mu0, scale_bf, shape_bf);
+    real mu0 = intercept_bf + slope_bf * nightly_temp[nid];
+    X[m][1] ~ normal(mu0, scale_bf);
     for (l in 2:L)
       X[m][l] ~ normal(loc_X[l-1], scale_X[l-1]);
-      // target += generalized_normal_lpdf(X[m][l] | loc_X[l-1], scale_X[l-1], shape_X);
   }
 
   target += reduce_sum(
@@ -206,7 +215,7 @@ model {
       y, A,
       start_idx, stop_idx,
       sigma, 
-      rate_rising, 
+      rising_width, 
       rate_decay,
       mu_blip, 
       tau_blip, 
@@ -216,14 +225,11 @@ model {
 }
 
 
-
 generated quantities {
   array[N] int<lower=1, upper=4> viterbi;
-  real log_p_state;
 
   // initialize
   for (t in 1:N) viterbi[t] = 1;
-  log_p_state = negative_infinity();
 
   // Viterbi per-night (independent nights)
   for (m in 1:M) {
@@ -241,7 +247,7 @@ generated quantities {
     // t = 1
     for (s in 1:4) {
       best_logp[1, s] = log(rho[s]) + emit_logprob_resid(s, z[1], 0, sigma,
-                                           rate_rising, rate_decay,
+                                           rising_width, rate_decay,
                                            mu_blip, tau_blip);
       back_ptr[1, s] = 1;
     }
@@ -256,7 +262,7 @@ generated quantities {
           if (cand > best) { best = cand; arg = j; }
         }
         best_logp[t, k] = best + emit_logprob_resid(k, z[t], z[t - 1], sigma,
-                                                    rate_rising, rate_decay,
+                                                    rising_width, rate_decay,
                                                     mu_blip, tau_blip);
         back_ptr[t, k] = arg;
       }

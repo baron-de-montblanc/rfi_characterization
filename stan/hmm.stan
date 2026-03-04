@@ -20,10 +20,10 @@ functions {
   }
 
   // Emission log-prob for residual z_t (after subtracting background)
-  real emit_logprob_resid(int s, real z_t, real z_tm1, real sigma_t, real rising_b, real decay_a, real mu_blip, real tau_blip) {
+  real emit_logprob_resid(int s, real z_t, real z_tm1, real sigma_t, real rfi_width, real mu_blip, real tau_blip) {
     if (s == 1)      return normal_lpdf(        z_t | 0, sigma_t);
-    else if (s == 2) return unifmod_normal_lpdf(z_t | z_tm1, sigma_t, 0, rising_b);
-    else if (s == 3) return unifmod_normal_lpdf(z_t | z_tm1, sigma_t, -decay_a, 0);
+    else if (s == 2) return unifmod_normal_lpdf(z_t | z_tm1, sigma_t, 0, rfi_width);
+    else if (s == 3) return unifmod_normal_lpdf(z_t | z_tm1, sigma_t, -rfi_width, 0);
     else             return student_t_lpdf(     z_t | 3, mu_blip, tau_blip);
   }
 
@@ -33,8 +33,7 @@ functions {
     vector y, matrix A,
     array[] int a_idx, array[] int b_idx,
     real sigma, 
-    real rising_b, 
-    real decay_a,
+    real rfi_width,
     real mu_blip, 
     real tau_blip, 
     vector rho,
@@ -58,8 +57,8 @@ functions {
 
         // t = 1
         for (s in 1:4)
-          gamma[1][s] = log(rho[s]) + emit_logprob_resid(s, z[1], 0,
-                              sigma, rising_b, decay_a,
+          gamma[1][s] = log(rho[s]) + emit_logprob_resid(s, z[1], 0,                      // TODO: z0?
+                              sigma, rfi_width,
                               mu_blip, tau_blip);
 
         // t > 1
@@ -70,7 +69,7 @@ functions {
             for (sp in 1:4) acc[sp] = gamma[t-1][sp] + Tlog[sp, s];
             gamma[t][s] = log_sum_exp(acc)
               + emit_logprob_resid(s, z[t], z_tm1,
-                                    sigma, rising_b, decay_a,
+                                    sigma, rfi_width,
                                     mu_blip, tau_blip);
           }
         }
@@ -122,8 +121,7 @@ parameters {
   real<lower=1e-12> scale_bf;
 
   // emission parameters
-  real<lower=1e-12> rising_b;
-  real<lower=1e-12> decay_a;
+  real<lower=1e-12> rfi_width;
   real              mu_blip;
   real<lower=1e-12> tau_blip;
 
@@ -180,8 +178,7 @@ model {
   scale_bf     ~ normal(8/sqrt(2), 1);
   
   // emission parameters
-  rising_b     ~ lognormal(-2,1);
-  decay_a      ~ lognormal(-2,1);
+  rfi_width    ~ lognormal(1,1);
   mu_blip      ~ normal(5,2.5);
   tau_blip     ~ lognormal(0,2);
   
@@ -210,8 +207,7 @@ model {
       y, A,
       start_idx, stop_idx,
       sigma, 
-      rising_b, 
-      decay_a,
+      rfi_width,
       mu_blip, 
       tau_blip, 
       rho,
@@ -242,7 +238,7 @@ generated quantities {
     // t = 1
     for (s in 1:4) {
       best_logp[1, s] = log(rho[s]) + emit_logprob_resid(s, z[1], 0, sigma,
-                                           rising_b, decay_a,
+                                           rfi_width,
                                            mu_blip, tau_blip);
       back_ptr[1, s] = 1;
     }
@@ -257,7 +253,7 @@ generated quantities {
           if (cand > best) { best = cand; arg = j; }
         }
         best_logp[t, k] = best + emit_logprob_resid(k, z[t], z[t - 1], sigma,
-                                                    rising_b, decay_a,
+                                                    rfi_width,
                                                     mu_blip, tau_blip);
         back_ptr[t, k] = arg;
       }

@@ -1,0 +1,58 @@
+intercepts:
+  '0': 767.27099609375
+  '1': 773.8646240234375
+  '2': 756.2579956054688
+  '3': 807.997314453125
+  '4': 781.35986328125
+ref_temps:
+  '0': !!python/object/apply:numpy._core.multiarray.scalar
+  - &id001 !!python/object/apply:numpy.dtype
+    args:
+    - f8
+    - false
+    - true
+    state: !!python/tuple
+    - 3
+    - <
+    - null
+    - null
+    - null
+    - -1
+    - -1
+    - 0
+  - !!binary |
+    AAAAwOBhM0A=
+  '1': !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAgJ3ZM0A=
+  '2': !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAANAzNEA=
+  '3': !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAANdmNEA=
+  '4': !!python/object/apply:numpy._core.multiarray.scalar
+  - *id001
+  - !!binary |
+    AAAAwESFM0A=
+scales:
+  '0': 8.69485092163086
+  '1': 19.629505157470703
+  '2': 22.034549713134766
+  '3': 23.452856063842773
+  '4': 24.416927337646484
+slopes:
+  '0': -12.793660163879395
+  '1': -12.989282608032227
+  '2': -12.83067512512207
+  '3': -13.617277145385742
+  '4': -12.889981269836426
+tails:
+  '0': 1.5593849420547485
+  '1': 1.4276649951934814
+  '2': 1.6162447929382324
+  '3': 1.5924253463745117
+  '4': 1.6654024124145508
